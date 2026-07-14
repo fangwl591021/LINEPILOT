@@ -458,7 +458,7 @@
     if (!text) return true;
     if (LINE_COPILOT_DATE_PATTERN.test(text) || LINE_COPILOT_TIME_PATTERN.test(text)) return true;
     if (/^\d+$/.test(text) || /https?:\/\//i.test(text)) return true;
-    return /^(今天|昨天|日期|時間|待處理|處理完畢|搜尋|搜索|自動回應訊息(?:功能執行中)?|使用手動聊天|預約傳送|已讀|未讀|傳送|進階方案|輕用量|OA Plus|Help|LINE|LINE COPILOT)$/i.test(
+    return /^(今天|昨天|日期|時間|待處理|處理完畢|搜尋|搜索|[「『]?自動回應訊息[」』]?(?:功能執行中)?|使用手動聊天|預約傳送|已讀|未讀|傳送|進階方案|輕用量|OA Plus|Help|LINE|LINE COPILOT)$/i.test(
       text
     );
   }
@@ -689,7 +689,7 @@
           const isNearAvatar = avatarDistance !== null && avatarDistance <= 180;
           const isNearStreamTop = streamGap !== null && streamGap >= -30 && streamGap <= 80;
           const hasNameSemantics = /(name|title|contact|profile|user|friend|member)/.test(signal);
-          if (!isNearAvatar && !isNearStreamTop && !hasNameSemantics) return;
+          if (!isNearAvatar && !hasNameSemantics) return;
           const evidence = ["位於中央聊天室頂部診斷區域"];
           let score = 32;
           if (headerScan.region.streamTop !== null && rect.bottom <= headerScan.region.streamTop + 20) {
@@ -702,7 +702,6 @@
             if (avatarDistance <= 90) score += 12;
           }
           if (isNearStreamTop) {
-            score += streamGap <= 45 ? 22 : 10;
             evidence.push(`距離訊息串上緣 ${streamGap}px`);
           }
           if (fontSize >= 18) {
