@@ -13,7 +13,7 @@ LINE COPILOT 是 LINE Official Account Manager 的本機輔助面板。v1.2 先�
 
 ## 聊天對象名稱策略
 
-偵測器先定位中央訊息串，再在訊息串上方、水平重疊的聊天室 header 中尋找名稱。候選只來自 header 的標題、ARIA、title、test id、name/profile/chat 語意元素及合理的葉節點文字。
+偵測器優先定位中央訊息串，再在訊息串上方、水平重疊的聊天室 header 中尋找名稱。若 LINE 的實際 DOM 沒有可辨識的 header 或 message class，名稱偵測仍可獨立以中央頂部位置、字型、父層排列及左側頭像距離評分，不會因訊息串尚未定位而直接失敗。
 
 候選必須是單行、合理長度、不是網址，也不能完全由數字、日期或時間組成。`今天`、`昨天`、`待處理`、`處理完畢`、`搜尋`、`使用手動聊天`、`自動回應訊息` 等會直接排除。
 
@@ -29,7 +29,7 @@ LINE COPILOT 是 LINE Official Account Manager 的本機輔助面板。v1.2 先�
 
 ## 真正文字訊息與排除規則
 
-偵測器先以 `role=log/list`、message-list/conversation/timeline 等語意及共同訊息父層評分，選出單一訊息串。只有位於該訊息串內、具訊息 ID、direction、message item/bubble 等結構的獨立節點才可成為候選。
+偵測器先以 `role=log/list`、message-list/conversation/timeline 等語意及共同訊息父層評分，選出單一訊息串。若實際頁面只使用無語意的雜湊 class，則以中央位置、可捲動／裁切特徵及可見時間文字定位訊息區。仍會要求訊息具有獨立結構；fallback 只接受有背景圓角、左右排列或 message/bubble 結構證據的視覺泡泡。
 
 擷取時優先讀取候選內的獨立文字節點；不使用整頁最短文字或任意葉節點 fallback。以下候選會排除並記錄原因：
 
@@ -68,7 +68,9 @@ LINE COPILOT 是 LINE Official Account Manager 的本機輔助面板。v1.2 先�
 
 ## SPA 與更新監聽
 
-監聽 `history.pushState`、`history.replaceState`、`popstate`、`hashchange`、Navigation API（可用時）、URL 輪詢及 `MutationObserver`。變更經 500ms debounce 後重新偵測。面板本身的 DOM 變化會忽略，避免無限迴圈；面板被移除時會復原且不重複建立。
+聊天室 ID 優先解析 `chat.line.biz/{accountId}/chat/{conversationId}` 中 `/chat/` 後方的識別碼，避免誤把前段 LINE OA 帳號 ID 當成聊天室 ID。
+
+監聽 `history.pushState`、`history.replaceState`、`popstate`、`hashchange`、Navigation API（可用時）、URL 輪詢及 `MutationObserver`。變更經 500ms debounce 後重新偵測；已定位且仍可見的訊息串會快取使用，避免反覆全頁掃描。面板本身的 DOM 變化會忽略，避免無限迴圈；面板被移除時會復原且不重複建立。
 
 ## 診斷報告
 

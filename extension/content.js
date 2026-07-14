@@ -53,7 +53,8 @@
     lastUrl: window.location.href,
     lastDomUpdateAt: LINE_COPILOT_EMPTY_VALUE,
     pendingReason: "initial-load",
-    latestState: null
+    latestState: null,
+    cachedStreamElement: null
   };
 
   console.log("LINE COPILOT Loaded");
@@ -188,11 +189,20 @@
           }
         }
 
-        const ignored = new Set(["chat", "account", "settings", "login", "home", "list"]);
-        const candidate = currentUrl.pathname
+        const pathParts = currentUrl.pathname
           .split("/")
           .map((part) => decodeURIComponent(part).trim())
-          .filter(Boolean)
+          .filter(Boolean);
+        const chatIndex = pathParts.findIndex((part) => part.toLowerCase() === "chat");
+        const chatCandidate = chatIndex >= 0 ? pathParts[chatIndex + 1] : null;
+        if (chatCandidate && /^[A-Za-z0-9_-]{12,}$/.test(chatCandidate)) {
+          return { value: chatCandidate, strategy: "url:chat-path-segment" };
+        }
+
+        const ignored = new Set(["chat", "account", "settings", "login", "home", "list"]);
+        const candidate = pathParts
+          .slice()
+          .reverse()
           .find(
             (part) =>
               /^[A-Za-z0-9_-]{12,}$/.test(part) && !ignored.has(part.toLowerCase())
@@ -210,6 +220,19 @@
       "message stream detection",
       () => {
         const usableRight = lineCopilotGetUsableRightEdge();
+        const cachedStream = lineCopilotRuntime.cachedStreamElement;
+        if (
+          cachedStream &&
+          document.contains(cachedStream) &&
+          lineCopilotIsElementVisible(cachedStream)
+        ) {
+          return {
+            element: cachedStream,
+            rect: cachedStream.getBoundingClientRect(),
+            strategy: "stream:cached-visible-container",
+            candidateCount: 1
+          };
+        }
         const candidates = new Map();
 
         const addCandidate = (element, strategy, baseScore) => {
@@ -218,7 +241,7 @@
           }
           const rect = element.getBoundingClientRect();
           if (
-            rect.left < usableRight * 0.18 ||
+            rect.left < Math.max(220, usableRight * 0.2) ||
             rect.right > usableRight + 2 ||
             rect.top < 70 ||
             rect.width < 260 ||
@@ -234,7 +257,7 @@
           );
           let score = baseScore + descendantCount * 5;
           if (/(auto|scroll)/.test(`${style.overflowY} ${style.overflow}`)) score += 16;
-          if (/(message|chat|conversation|history|stream)/.test(lineCopilotGetSignal(element))) {
+          if (/(message|chat|conversation|history|stream|talk)/.test(lineCopilotGetSignal(element))) {
             score += 16;
           }
           const existing = candidates.get(element);
@@ -262,10 +285,47 @@
           }
         });
 
+        const currentBest = Math.max(0, ...Array.from(candidates.values()).map((item) => item.score));
+        if (currentBest < 70) {
+          Array.from(document.querySelectorAll("main,section,[role='main'],div"))
+            .slice(0, 2500)
+            .forEach((element) => {
+              if (
+                !lineCopilotIsElementVisible(element) ||
+                element.closest("nav,aside,form,header,footer")
+              ) {
+                return;
+              }
+              const rect = element.getBoundingClientRect();
+              if (
+                rect.left < Math.max(220, usableRight * 0.24) ||
+                rect.right > usableRight + 2 ||
+                rect.top < 90 ||
+                rect.top > 420 ||
+                rect.width < 300 ||
+                rect.height < 180
+              ) {
+                return;
+              }
+              const text = lineCopilotNormalizeText(element.innerText || element.textContent);
+              const timePattern = new RegExp(LINE_COPILOT_TIME_PATTERN.source, "g");
+              const timeCount = Math.min((text.match(timePattern) || []).length, 5);
+              const lineCount = Math.min(text.split("\n").filter(Boolean).length, 12);
+              const style = window.getComputedStyle(element);
+              const overflowSignal = /(auto|scroll|hidden|clip)/.test(
+                `${style.overflow} ${style.overflowX} ${style.overflowY}`
+              );
+              if (!overflowSignal && timeCount === 0) return;
+              const baseScore = 28 + timeCount * 5 + Math.min(lineCount, 5) + (overflowSignal ? 12 : 0);
+              addCandidate(element, "stream:visible-conversation-region", baseScore);
+            });
+        }
+
         const sorted = Array.from(candidates.values()).sort(
           (left, right) => right.score - left.score
         );
         const selected = sorted[0];
+        lineCopilotRuntime.cachedStreamElement = selected?.score >= 45 ? selected.element : null;
         return {
           element: selected?.score >= 45 ? selected.element : null,
           rect: selected?.score >= 45 ? selected.rect : null,
@@ -303,43 +363,49 @@
   }
 
   function lineCopilotFindChatHeader(streamResult) {
-    if (!streamResult.element || !streamResult.rect) {
-      return { element: null, strategy: "header:no-stream", score: 0 };
-    }
-
+    const usableRight = lineCopilotGetUsableRightEdge();
     const streamRect = streamResult.rect;
     const candidates = [];
     document.querySelectorAll(LINE_COPILOT_HEADER_SELECTOR).forEach((element) => {
       if (!lineCopilotIsElementVisible(element) || element.closest("nav,aside")) return;
       const rect = element.getBoundingClientRect();
-      const overlap = Math.max(
-        0,
-        Math.min(rect.right, streamRect.right) - Math.max(rect.left, streamRect.left)
-      );
-      const overlapRatio = overlap / Math.max(1, Math.min(rect.width, streamRect.width));
       if (
-        overlapRatio < 0.55 ||
-        rect.bottom > streamRect.top + 110 ||
         rect.top < 45 ||
-        rect.top > 260
+        rect.top > 260 ||
+        rect.left < Math.max(220, usableRight * 0.2) ||
+        rect.right > usableRight + 2 ||
+        rect.width < 150
       ) {
         return;
       }
-      let score = 45 + overlapRatio * 30;
-      if (rect.bottom <= streamRect.top + 25) score += 24;
+      let score = 38;
+      let strategy = "header:top-region";
+      if (streamRect) {
+        const overlap = Math.max(
+          0,
+          Math.min(rect.right, streamRect.right) - Math.max(rect.left, streamRect.left)
+        );
+        const overlapRatio = overlap / Math.max(1, Math.min(rect.width, streamRect.width));
+        if (overlapRatio < 0.45 || rect.bottom > streamRect.top + 120) return;
+        score += overlapRatio * 30;
+        if (rect.bottom <= streamRect.top + 30) score += 22;
+        strategy = "header:stream-aligned";
+      }
       if (/(chat|conversation|room).*(header|head)|header.*(chat|conversation|room)/.test(lineCopilotGetSignal(element))) {
         score += 24;
       }
-      candidates.push({ element, score, strategy: "header:stream-aligned" });
+      candidates.push({ element, score, strategy });
     });
     candidates.sort((left, right) => right.score - left.score);
     return candidates[0] || { element: null, strategy: "header:not-found", score: 0 };
   }
 
-  function lineCopilotAvatarEvidence(header, nameRect) {
-    const avatars = header.querySelectorAll(
-      "img,[data-testid*='avatar' i],[class*='avatar' i],[class*='profile-image' i]"
-    );
+  function lineCopilotNearbyAvatarEvidence(element, nameRect) {
+    const avatars = Array.from(
+      document.querySelectorAll(
+        "img,[data-testid*='avatar' i],[class*='avatar' i],[class*='profile-image' i],[class*='user-image' i]"
+      )
+    ).slice(0, 500);
     for (const avatar of avatars) {
       if (!lineCopilotIsElementVisible(avatar)) continue;
       const rect = avatar.getBoundingClientRect();
@@ -347,7 +413,15 @@
       const verticalDistance = Math.abs(
         nameRect.top + nameRect.height / 2 - (rect.top + rect.height / 2)
       );
-      if (horizontalGap >= -8 && horizontalGap <= 150 && verticalDistance <= 45) {
+      if (
+        rect.width >= 18 &&
+        rect.width <= 96 &&
+        rect.height >= 18 &&
+        rect.height <= 96 &&
+        horizontalGap >= -8 &&
+        horizontalGap <= 170 &&
+        verticalDistance <= 48
+      ) {
         return true;
       }
     }
@@ -358,54 +432,55 @@
     return lineCopilotSafeRun(
       "contact name detection",
       () => {
+        const usableRight = lineCopilotGetUsableRightEdge();
         const headerResult = lineCopilotFindChatHeader(streamResult);
-        if (!headerResult.element) {
-          return {
-            value: null,
-            strategy: headerResult.strategy,
-            candidateCount: 0,
-            candidates: [],
-            selectionReason: "未找到與訊息串對齊的聊天室 header"
-          };
-        }
-
-        const header = headerResult.element;
-        const headerRect = header.getBoundingClientRect();
         const candidates = [];
-        const elements = [
-          header,
-          ...header.querySelectorAll(
-            "h1,h2,h3,[role='heading'],[data-testid*='name' i],[class*='name' i],[class*='title' i],span,div"
-          )
-        ];
+        const seenElements = new Set();
         const seenText = new Set();
 
-        elements.slice(0, 350).forEach((element) => {
-          if (!lineCopilotIsElementVisible(element)) return;
-          const { raw, normalized: text } = lineCopilotDirectText(element);
-          if (!lineCopilotIsPlausibleContactName(raw, text) || seenText.has(text)) return;
-          seenText.add(text);
-
-          const rect = element.getBoundingClientRect();
+        const addCandidate = (element, strategy, baseScore) => {
           if (
-            rect.left < headerRect.left ||
-            rect.right > headerRect.right + 2 ||
-            rect.top < headerRect.top ||
-            rect.bottom > headerRect.bottom + 2
+            seenElements.has(element) ||
+            !lineCopilotIsElementVisible(element) ||
+            element.closest("nav,aside,form,button,a,[role='button'],[role='toolbar']")
           ) {
             return;
           }
+          seenElements.add(element);
+          const { raw, normalized: text } = lineCopilotDirectText(element);
+          if (!lineCopilotIsPlausibleContactName(raw, text) || seenText.has(text)) return;
+
+          const rect = element.getBoundingClientRect();
+          if (
+            rect.top < 55 ||
+            rect.top > 245 ||
+            rect.left < Math.max(220, usableRight * 0.24) ||
+            rect.right > usableRight + 2
+          ) {
+            return;
+          }
+          seenText.add(text);
 
           const style = window.getComputedStyle(element);
           const fontSize = Number.parseFloat(style.fontSize || "0");
           const fontWeight = Number.parseInt(style.fontWeight || "400", 10) || 400;
-          const evidence = ["位於與訊息串對齊的聊天室 header"];
-          let score = 55;
+          const evidence = [];
+          let score = baseScore;
+          if (headerResult.element?.contains(element) || element === headerResult.element) {
+            score += 38;
+            evidence.push("位於聊天室 header");
+          } else {
+            evidence.push("位於中央聊天室頂部候選區");
+          }
+          if (rect.top >= 75 && rect.top <= 195) {
+            score += 24;
+            evidence.push("位於主要 header 高度帶");
+          }
           if (element.matches("h1,h2,h3,[role='heading']")) {
             score += 22;
             evidence.push("具 heading 語意");
           }
-          if (/(contact|profile|user|friend|member|name|title)/.test(lineCopilotGetSignal(element, header))) {
+          if (/(contact|profile|user|friend|member|name|title)/.test(lineCopilotGetSignal(element))) {
             score += 18;
             evidence.push("具有 name/profile 屬性訊號");
           }
@@ -420,29 +495,50 @@
             score += 7;
             evidence.push("字重較高");
           }
-          if (lineCopilotAvatarEvidence(header, rect)) {
-            score += 32;
-            evidence.push("位於頭像右側且垂直相鄰");
+          if (lineCopilotNearbyAvatarEvidence(element, rect)) {
+            score += 36;
+            evidence.push("左側鄰近聊天室頭像");
           }
           if (element.parentElement && /flex/.test(window.getComputedStyle(element.parentElement).display)) {
             score += 6;
-            evidence.push("父層為 header flex 結構");
+            evidence.push("父層為 flex 結構");
           }
           if (text.length <= 30) score += 5;
+          candidates.push({ text, score: Math.round(score), evidence, strategy });
+        };
 
-          candidates.push({ text, score: Math.round(score), evidence });
-        });
+        if (headerResult.element) {
+          [
+            headerResult.element,
+            ...headerResult.element.querySelectorAll(
+              "h1,h2,h3,[role='heading'],[data-testid*='name' i],[class*='name' i],[class*='title' i],span,div"
+            )
+          ].slice(0, 500).forEach((element) => addCandidate(element, "name:header", 25));
+        }
+
+        Array.from(
+          document.querySelectorAll(
+            "h1,h2,h3,[role='heading'],[data-testid*='name' i],[data-testid*='title' i],[class*='name' i],[class*='title' i],[aria-label],[title]"
+          )
+        ).slice(0, 900).forEach((element) => addCandidate(element, "name:semantic-top-region", 20));
+
+        if (!candidates.some((candidate) => candidate.score >= 80)) {
+          Array.from(document.querySelectorAll("body p,body span,body strong,body div"))
+            .slice(0, 2500)
+            .filter((element) => element.children.length <= 1)
+            .forEach((element) => addCandidate(element, "name:avatar-geometry-fallback", 12));
+        }
 
         candidates.sort((left, right) => right.score - left.score);
-        const selected = candidates[0]?.score >= 75 ? candidates[0] : null;
+        const selected = candidates[0]?.score >= 70 ? candidates[0] : null;
         return {
           value: selected?.text || null,
-          strategy: selected ? "name:header-avatar-scoring" : "name:low-confidence",
+          strategy: selected?.strategy || "name:low-confidence",
           candidateCount: candidates.length,
           candidates: candidates.slice(0, 12),
           selectionReason: selected
             ? `選擇最高分 ${selected.score}：${selected.evidence.join("；")}`
-            : "所有 header 名稱候選分數低於 75，寧可不猜測"
+            : "聊天室頂部名稱候選分數低於 70，寧可不猜測"
         };
       },
       {
@@ -650,6 +746,52 @@
     };
   }
 
+  function lineCopilotFindVisualMessageWrapper(leaf, stream) {
+    const streamRect = stream.getBoundingClientRect();
+    const streamStyle = window.getComputedStyle(stream);
+    let current = leaf;
+    let depth = 0;
+    let best = null;
+    let bestScore = 0;
+    while (current && current !== stream && depth < 5) {
+      if (!lineCopilotIsElementVisible(current)) break;
+      const rect = current.getBoundingClientRect();
+      if (
+        rect.left >= streamRect.left - 1 &&
+        rect.right <= streamRect.right + 1 &&
+        rect.width <= streamRect.width * 0.82 &&
+        rect.height <= 260
+      ) {
+        const style = window.getComputedStyle(current);
+        const signal = lineCopilotGetSignal(current, stream);
+        const background = style.backgroundColor;
+        const hasBackground =
+          background &&
+          background !== "transparent" &&
+          background !== "rgba(0, 0, 0, 0)" &&
+          background !== streamStyle.backgroundColor;
+        const radius = Number.parseFloat(style.borderRadius || "0");
+        const directionSignal =
+          style.alignSelf === "flex-start" ||
+          style.alignSelf === "flex-end" ||
+          style.marginLeft === "auto" ||
+          style.marginRight === "auto";
+        let score = 0;
+        if (hasBackground && radius >= 4) score += 4;
+        if (directionSignal) score += 3;
+        if (/(message|bubble|talk|incoming|outgoing|received|sent)/.test(signal)) score += 5;
+        if (current.querySelector("time,[class*='time' i],[data-testid*='time' i]")) score += 2;
+        if (score > bestScore) {
+          best = current;
+          bestScore = score;
+        }
+      }
+      current = current.parentElement;
+      depth += 1;
+    }
+    return bestScore >= 3 ? best : null;
+  }
+
   function detectVisibleMessages(streamResult) {
     return lineCopilotSafeRun(
       "visible message detection",
@@ -666,14 +808,36 @@
         const stream = streamResult.element;
         const accepted = [];
         const excluded = [];
-        const candidates = Array.from(stream.querySelectorAll(LINE_COPILOT_MESSAGE_SELECTOR)).slice(
-          0,
-          900
-        );
+        const candidateStrategies = new Map();
+        const addCandidate = (candidate, strategy) => {
+          if (!candidate || candidate === stream || candidateStrategies.has(candidate)) return;
+          candidateStrategies.set(candidate, strategy);
+        };
 
+        Array.from(stream.querySelectorAll(LINE_COPILOT_MESSAGE_SELECTOR))
+          .slice(0, 900)
+          .forEach((candidate) => addCandidate(candidate, "candidate:structural"));
+
+        Array.from(stream.querySelectorAll("p,span,div"))
+          .slice(0, 3000)
+          .filter((element) => element.children.length === 0)
+          .forEach((leaf) => {
+            if (
+              !lineCopilotIsElementVisible(leaf) ||
+              leaf.closest("button,a,menu,nav,header,footer,form,[role='button'],[role='menu'],[role='toolbar']")
+            ) {
+              return;
+            }
+            const text = lineCopilotCleanMessageText(leaf.innerText || leaf.textContent);
+            if (!text || text.length > 600) return;
+            const wrapper = lineCopilotFindVisualMessageWrapper(leaf, stream);
+            if (wrapper) addCandidate(wrapper, "candidate:visual-bubble-fallback");
+          });
+
+        const candidates = Array.from(candidateStrategies.keys());
         candidates.forEach((candidate) => {
           if (!lineCopilotIsElementVisible(candidate)) {
-            excluded.push({ text: "", reason: "not-visible", sourceStrategy: "candidate:structural" });
+            excluded.push({ text: "", reason: "not-visible", sourceStrategy: candidateStrategies.get(candidate) });
             return;
           }
 
@@ -683,7 +847,7 @@
             excluded.push({
               text: payload.text.slice(0, 160),
               reason: exclusionReason,
-              sourceStrategy: payload.strategy
+              sourceStrategy: candidateStrategies.get(candidate)
             });
             return;
           }
@@ -699,19 +863,16 @@
             excluded.push({
               text: payload.text.slice(0, 160),
               reason: "outside-visible-stream-bounds",
-              sourceStrategy: payload.strategy
+              sourceStrategy: candidateStrategies.get(candidate)
             });
             return;
           }
 
           const rawText = lineCopilotNormalizeText(candidate.innerText || candidate.textContent);
           const time = lineCopilotExtractMessageTime(candidate, rawText, stream);
-          const roleResult = lineCopilotDetectMessageRole(
-            candidate,
-            payload.sourceElement,
-            stream
-          );
+          const roleResult = lineCopilotDetectMessageRole(candidate, payload.sourceElement, stream);
           let detectionScore = payload.strategy === "text:dedicated-message-node" ? 60 : 35;
+          if (candidateStrategies.get(candidate) === "candidate:visual-bubble-fallback") detectionScore += 18;
           if (candidate.hasAttribute("data-message-id")) detectionScore += 30;
           if (candidate.hasAttribute("data-direction")) detectionScore += 20;
           if (time) detectionScore += 5;
@@ -721,7 +882,7 @@
             role: roleResult.role,
             time,
             confidence: roleResult.confidence,
-            sourceStrategy: `${payload.strategy}; ${roleResult.evidence.join("; ")}`,
+            sourceStrategy: `${candidateStrategies.get(candidate)}; ${payload.strategy}; ${roleResult.evidence.join("; ")}`,
             roleEvidence: roleResult.evidence,
             roleScores: roleResult.scores,
             detectionScore,
@@ -757,7 +918,7 @@
         return {
           messages,
           excludedCandidates: excluded.slice(0, 40),
-          strategy: `messages:strict-structural-in-${streamResult.strategy}`,
+          strategy: `messages:structural-plus-visual-fallback-in-${streamResult.strategy}`,
           candidateCount: candidates.length
         };
       },

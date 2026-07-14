@@ -10,11 +10,12 @@ LINE COPILOT 是在 LINE Official Account Manager 右側顯示的 Chrome Extensi
 
 ## v1.2 功能
 
-- 優先從中央聊天室 header 與頭像鄰近位置取得聊天對象名稱，並排除日期、時間、操作按鈕及系統文字。
-- 僅從已辨識的訊息串及獨立訊息節點擷取文字。
+- 優先從中央聊天室 header 與頭像鄰近位置取得聊天對象名稱；即使 LINE 使用無語意的雜湊 class，也可用頂部位置、字型與頭像幾何 fallback，並排除日期、時間、操作按鈕及系統文字。
+- 僅從已辨識的訊息串及獨立訊息節點擷取文字；若沒有 message 語意 class，會保守辨識中央可捲動區與具有背景、圓角或左右排列證據的視覺泡泡。
 - 排除 Rich Menu、圖文選單、卡片操作、圖片、導覽按鈕、日期分隔線、已讀及系統操作提示。
 - 依 DOM 方向語意、排列、頭像與水平位置綜合判斷 `customer`、`operator`、`system` 或 `unknown`，並顯示 high、medium 或 low confidence。
-- 監聽 SPA URL、History API、瀏覽器返回/前進與 DOM 更新，500ms debounce 後重新偵測。
+- 優先解析 `chat.line.biz/{accountId}/chat/{conversationId}` 的 `/chat/` 後段聊天室 ID。
+- 監聽 SPA URL、History API、瀏覽器返回/前進與 DOM 更新，500ms debounce 後重新偵測，並快取仍有效的訊息串以避免重複全頁掃描。
 - 偵錯模式列出名稱候選評分、角色依據及被排除候選。
 - 使用者點擊「匯出偵測報告」後，僅將明確欄位的 JSON 複製到剪貼簿，不自動上傳。
 
