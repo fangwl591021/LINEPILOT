@@ -6,7 +6,7 @@ LINE COPILOT 是顯示於 LINE Official Account Manager 右側的瀏覽器輔助
 
 ## v1.0 開發目標
 
-- 驗證 Manifest V3 Extension 可在 `https://manager.line.biz/*` 載入。
+- 驗證 Manifest V3 Extension 可在 `https://manager.line.biz/*` 後台及 `https://chat.line.biz/*` 聊天室載入。
 - 驗證固定式右側面板可正常顯示、收合及展開。
 - 驗證面對 LINE OA 的 SPA 導航與重新渲染時，面板仍能維持單一實例。
 - 建立後續功能可延伸的原生 HTML、CSS、JavaScript 專案骨架。
@@ -14,7 +14,7 @@ LINE COPILOT 是顯示於 LINE Official Account Manager 右側的瀏覽器輔助
 ## 本版本包含功能
 
 - Manifest V3 設定與最基本的 service worker。
-- 僅在 LINE Official Account Manager 網域載入的 content script 與樣式。
+- 僅在 LINE Official Account Manager 的 `manager.line.biz` 與 `chat.line.biz` 網域載入 content script 與樣式。
 - 右側固定、全視窗高度、約 340px 寬的 LINE COPILOT 面板。
 - 顯示頁面偵測狀態與目前網址。
 - 測試功能按鈕及成功訊息。
@@ -39,7 +39,7 @@ LINE COPILOT 是顯示於 LINE Official Account Manager 右側的瀏覽器輔助
 2. 在 Chrome 開啟 `chrome://extensions` 並啟用「開發人員模式」。
 3. 點擊「載入未封裝項目」，選擇 `extension/` 資料夾。
 4. 確認 Extension 清單顯示 `LINE COPILOT 1.0.0` 且沒有錯誤。
-5. 開啟或重新整理 `https://manager.line.biz/`。
+5. 開啟或重新整理 `https://manager.line.biz/`，並從後台進入 `https://chat.line.biz/` 聊天室。
 6. 確認頁面右側顯示面板，Console 出現 `LINE COPILOT Loaded`。
 7. 測試「測試功能」、「收合面板」、「關閉面板」及浮動展開按鈕。
 8. 在 LINE OA 內切換頁面，確認目前網址更新且只有一個面板。
@@ -47,7 +47,7 @@ LINE COPILOT 是顯示於 LINE Official Account Manager 右側的瀏覽器輔助
 
 ## 已知限制
 
-- 僅支援網址符合 `https://manager.line.biz/*` 的頁面。
+- 僅支援網址符合 `https://manager.line.biz/*` 或 `https://chat.line.biz/*` 的頁面。
 - v1.0 不判斷使用者是否已登入，也不判斷目前是否開啟聊天室。
 - LINE OA 若調整頁面安全政策或瀏覽器擴充功能限制，可能需要更新載入方式。
 - 面板採固定覆蓋顯示，不調整 LINE OA 原頁面寬度；展開時可能遮住頁面最右側約 340px 的內容，使用者可隨時收合。

@@ -1,6 +1,6 @@
 # LINE COPILOT
 
-LINE COPILOT 是一個供 LINE Official Account Manager 使用的 Chrome Extension。v1.0 的用途是驗證擴充功能能在 `manager.line.biz` 正常載入，並在頁面右側顯示獨立、可收合的輔助面板。
+LINE COPILOT 是一個供 LINE Official Account Manager 使用的 Chrome Extension。v1.0 的用途是驗證擴充功能能在 `manager.line.biz` 後台與 `chat.line.biz` 聊天室正常載入，並在頁面右側顯示獨立、可收合的輔助面板。
 
 ## 專案狀態
 
@@ -14,7 +14,7 @@ LINE COPILOT 是一個供 LINE Official Account Manager 使用的 Chrome Extensi
 2. 開啟右上角的「開發人員模式」。
 3. 點擊「載入未封裝項目」。
 4. 選擇本專案的 `extension` 資料夾。
-5. 開啟 [https://manager.line.biz/](https://manager.line.biz/)。
+5. 開啟 [https://manager.line.biz/](https://manager.line.biz/)，或從後台進入 `https://chat.line.biz/` 聊天室。
 
 更新程式後，請在 `chrome://extensions` 對 LINE COPILOT 點擊重新載入，再重新整理 LINE OA 頁面。
 
@@ -22,6 +22,7 @@ LINE COPILOT 是一個供 LINE Official Account Manager 使用的 Chrome Extensi
 
 - [ ] `chrome://extensions` 能成功載入 LINE COPILOT，且未顯示 Manifest 錯誤。
 - [ ] 開啟或重新整理 `https://manager.line.biz/` 後，右側出現 LINE COPILOT 面板。
+- [ ] 進入 `https://chat.line.biz/` 聊天室後，右側仍會出現 LINE COPILOT 面板。
 - [ ] Console 顯示 `LINE COPILOT Loaded`。
 - [ ] 面板顯示目前網址，切換 LINE OA 內部頁面後網址會更新。
 - [ ] 點擊「測試功能」後，面板顯示 `LINE COPILOT 測試成功`。

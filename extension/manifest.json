@@ -12,7 +12,10 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://manager.line.biz/*"],
+      "matches": [
+        "https://manager.line.biz/*",
+        "https://chat.line.biz/*"
+      ],
       "js": ["content.js"],
       "css": ["styles.css"],
       "run_at": "document_idle"
