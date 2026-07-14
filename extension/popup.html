@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>LINE COPILOT</title>
+    <style>
+      .line-copilot-popup {
+        width: 280px;
+        box-sizing: border-box;
+        margin: 0;
+        padding: 20px;
+        background: #ffffff;
+        color: #17212b;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      }
+
+      .line-copilot-popup-heading {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .line-copilot-popup-mark {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
+        background: #06c755;
+        color: #ffffff;
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .line-copilot-popup-title {
+        margin: 0;
+        font-size: 18px;
+      }
+
+      .line-copilot-popup-version {
+        margin: 4px 0 0;
+        color: #687581;
+        font-size: 12px;
+      }
+
+      .line-copilot-popup-message {
+        margin: 18px 0 0;
+        padding-top: 16px;
+        border-top: 1px solid #e3e7eb;
+        color: #344050;
+        font-size: 13px;
+        line-height: 1.6;
+      }
+    </style>
+  </head>
+  <body class="line-copilot-popup">
+    <div class="line-copilot-popup-heading">
+      <span class="line-copilot-popup-mark" aria-hidden="true">LC</span>
+      <div class="line-copilot-popup-copy">
+        <h1 class="line-copilot-popup-title">LINE COPILOT</h1>
+        <p class="line-copilot-popup-version">版本 <span id="line-copilot-popup-version">1.0.0</span></p>
+      </div>
+    </div>
+    <p class="line-copilot-popup-message">請開啟 LINE Official Account Manager 使用 LINE COPILOT。</p>
+    <script src="popup.js"></script>
+  </body>
+</html>

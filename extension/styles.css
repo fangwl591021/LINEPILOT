@@ -1,0 +1,242 @@
+#line-copilot-root.line-copilot-root {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 340px;
+  height: 100vh;
+  box-sizing: border-box;
+  color: #17212b;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  z-index: 2147483647;
+  pointer-events: none;
+}
+
+#line-copilot-root .line-copilot-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  background: #ffffff;
+  border-left: 1px solid #dfe3e8;
+  box-shadow: -8px 0 24px rgba(15, 23, 42, 0.12);
+  pointer-events: auto;
+}
+
+#line-copilot-root .line-copilot-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 68px;
+  box-sizing: border-box;
+  padding: 14px 16px;
+  border-bottom: 1px solid #e8ebef;
+}
+
+#line-copilot-root .line-copilot-heading-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#line-copilot-root .line-copilot-brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: #06c755;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+#line-copilot-root .line-copilot-title {
+  margin: 0;
+  color: #17212b;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+#line-copilot-root .line-copilot-icon-button,
+#line-copilot-root .line-copilot-expand-button,
+#line-copilot-root .line-copilot-primary-button,
+#line-copilot-root .line-copilot-secondary-button {
+  box-sizing: border-box;
+  font: inherit;
+  cursor: pointer;
+}
+
+#line-copilot-root .line-copilot-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid #dfe3e8;
+  border-radius: 9px;
+  background: #ffffff;
+  color: #52606d;
+  font-size: 25px;
+  line-height: 1;
+}
+
+#line-copilot-root .line-copilot-icon-button:hover,
+#line-copilot-root .line-copilot-secondary-button:hover {
+  background: #f6f8fa;
+}
+
+#line-copilot-root .line-copilot-content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 20px;
+  min-height: 0;
+  box-sizing: border-box;
+  padding: 20px 18px;
+  overflow-y: auto;
+}
+
+#line-copilot-root .line-copilot-status-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 13px;
+  border: 1px solid #cfeeda;
+  border-radius: 10px;
+  background: #f2fbf5;
+}
+
+#line-copilot-root .line-copilot-status-dot {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #06c755;
+  box-shadow: 0 0 0 3px rgba(6, 199, 85, 0.14);
+}
+
+#line-copilot-root .line-copilot-status-text {
+  color: #176b3a;
+  font-weight: 600;
+}
+
+#line-copilot-root .line-copilot-info-group {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+#line-copilot-root .line-copilot-label {
+  color: #52606d;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+#line-copilot-root .line-copilot-url {
+  margin: 0;
+  padding: 11px 12px;
+  border: 1px solid #dfe3e8;
+  border-radius: 9px;
+  background: #f7f8fa;
+  color: #344050;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+#line-copilot-root .line-copilot-primary-button,
+#line-copilot-root .line-copilot-secondary-button {
+  width: 100%;
+  min-height: 42px;
+  padding: 9px 14px;
+  border-radius: 9px;
+  font-weight: 700;
+}
+
+#line-copilot-root .line-copilot-primary-button {
+  border: 1px solid #06b84f;
+  background: #06c755;
+  color: #ffffff;
+}
+
+#line-copilot-root .line-copilot-primary-button:hover {
+  background: #05b64d;
+}
+
+#line-copilot-root .line-copilot-test-result {
+  min-height: 21px;
+  margin: -8px 0 0;
+  color: #176b3a;
+  font-weight: 700;
+  text-align: center;
+}
+
+#line-copilot-root .line-copilot-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 18px;
+  border-top: 1px solid #e8ebef;
+}
+
+#line-copilot-root .line-copilot-secondary-button {
+  border: 1px solid #d7dce2;
+  background: #ffffff;
+  color: #344050;
+}
+
+#line-copilot-root .line-copilot-version {
+  color: #87929e;
+  font-size: 11px;
+  text-align: center;
+}
+
+#line-copilot-root .line-copilot-expand-button {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  padding: 0;
+  border: 1px solid #05b64d;
+  border-radius: 15px;
+  background: #06c755;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.2);
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  pointer-events: auto;
+}
+
+#line-copilot-root.line-copilot-collapsed {
+  top: auto;
+  right: 18px;
+  bottom: 18px;
+  width: 52px;
+  height: 52px;
+}
+
+#line-copilot-root.line-copilot-collapsed .line-copilot-panel {
+  display: none;
+}
+
+#line-copilot-root.line-copilot-collapsed .line-copilot-expand-button {
+  display: inline-flex;
+}
+
+#line-copilot-root .line-copilot-icon-button:focus-visible,
+#line-copilot-root .line-copilot-expand-button:focus-visible,
+#line-copilot-root .line-copilot-primary-button:focus-visible,
+#line-copilot-root .line-copilot-secondary-button:focus-visible {
+  outline: 3px solid rgba(6, 199, 85, 0.3);
+  outline-offset: 2px;
+}
