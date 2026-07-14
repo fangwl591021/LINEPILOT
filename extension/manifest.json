@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "LINE COPILOT",
+  "version": "1.0.0",
+  "description": "在 LINE Official Account Manager 顯示 LINE COPILOT 驗證面板。",
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "LINE COPILOT",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://manager.line.biz/*",
+        "https://chat.line.biz/*"
+      ],
+      "js": ["content.js"],
+      "css": ["styles.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}
