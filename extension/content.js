@@ -452,27 +452,36 @@
 
           const rect = element.getBoundingClientRect();
           if (
-            rect.top < 55 ||
-            rect.top > 245 ||
-            rect.left < Math.max(220, usableRight * 0.24) ||
+            rect.top < 20 ||
+            rect.bottom > 175 ||
+            rect.left < 10 ||
             rect.right > usableRight + 2
           ) {
             return;
           }
-          seenText.add(text);
 
           const style = window.getComputedStyle(element);
           const fontSize = Number.parseFloat(style.fontSize || "0");
           const fontWeight = Number.parseInt(style.fontWeight || "400", 10) || 400;
+          const signal = lineCopilotGetSignal(element);
+          const isInsideHeader =
+            headerResult.element?.contains(element) || element === headerResult.element;
+          const hasHeadingOrNameSignal =
+            element.matches("h1,h2,h3,[role='heading']") ||
+            /(contact|profile|user|friend|member|name|title)/.test(signal);
+          const hasNearbyAvatar = lineCopilotNearbyAvatarEvidence(element, rect);
+          if (!isInsideHeader && !hasHeadingOrNameSignal && !hasNearbyAvatar) return;
+          seenText.add(text);
+
           const evidence = [];
           let score = baseScore;
-          if (headerResult.element?.contains(element) || element === headerResult.element) {
+          if (isInsideHeader) {
             score += 38;
             evidence.push("位於聊天室 header");
           } else {
             evidence.push("位於中央聊天室頂部候選區");
           }
-          if (rect.top >= 75 && rect.top <= 195) {
+          if (rect.top >= 25 && rect.top <= 120) {
             score += 24;
             evidence.push("位於主要 header 高度帶");
           }
@@ -480,7 +489,7 @@
             score += 22;
             evidence.push("具 heading 語意");
           }
-          if (/(contact|profile|user|friend|member|name|title)/.test(lineCopilotGetSignal(element))) {
+          if (/(contact|profile|user|friend|member|name|title)/.test(signal)) {
             score += 18;
             evidence.push("具有 name/profile 屬性訊號");
           }
@@ -495,7 +504,7 @@
             score += 7;
             evidence.push("字重較高");
           }
-          if (lineCopilotNearbyAvatarEvidence(element, rect)) {
+          if (hasNearbyAvatar) {
             score += 36;
             evidence.push("左側鄰近聊天室頭像");
           }
