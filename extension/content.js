@@ -413,8 +413,7 @@
         : Math.min(280, window.innerHeight * 0.34),
       left: streamRect ? Math.max(0, streamRect.left - 160) : 0,
       right: streamRect ? Math.min(usableRight, streamRect.right + 24) : usableRight,
-      streamTop: streamRect?.top ?? null,
-      streamLeft: streamRect?.left ?? null
+      streamTop: streamRect?.top ?? null
     };
   }
 
@@ -435,7 +434,7 @@
           rect.height <= 110 &&
           rect.bottom >= region.top - 20 &&
           rect.top <= region.bottom + 80 &&
-          (rect.right >= region.left - 40 || rect.top <= 110) &&
+          rect.right >= region.left - 40 &&
           rect.left <= region.right + 40
         );
       });
@@ -516,18 +515,10 @@
         if (!lineCopilotIsElementVisible(element)) return;
         const rect = element.getBoundingClientRect();
         const parent = element.parentElement;
-        const parentRect = parent?.getBoundingClientRect();
-        const isHeaderOverflow = Boolean(
-          rect.left < region.left &&
-          rect.top <= 110 &&
-          region.streamLeft !== null &&
-          parentRect &&
-          parentRect.right >= region.streamLeft + 40
-        );
         if (
           rect.bottom < region.top ||
           rect.top > region.bottom ||
-          (rect.left < region.left && !isHeaderOverflow) ||
+          rect.left < region.left ||
           rect.left > region.right ||
           rect.height > 150
         ) {
