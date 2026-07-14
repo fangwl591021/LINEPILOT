@@ -9,22 +9,51 @@
   const LINE_COPILOT_EMPTY_VALUE = "尚未偵測到";
   const LINE_COPILOT_MESSAGE_LIMIT = 5;
   const LINE_COPILOT_TIME_PATTERN = /(?:上午|下午)?\s*(?:[01]?\d|2[0-3]):[0-5]\d/;
+  const LINE_COPILOT_DATE_PATTERN = /^(今天|昨天|前天|星期[一二三四五六日天]|週[一二三四五六日天]|\d{4}[\/.年-]\d{1,2}(?:[\/.月-]\d{1,2}日?)?|\d{1,2}[\/.月-]\d{1,2}日?)$/;
+  const LINE_COPILOT_HEADER_SELECTOR = [
+    "[data-testid*='chat-header' i]",
+    "[data-testid*='conversation-header' i]",
+    "[class*='chat-header' i]",
+    "[class*='conversation-header' i]",
+    "[class*='room-header' i]",
+    "header"
+  ].join(",");
+  const LINE_COPILOT_STREAM_SELECTOR = [
+    "[data-testid*='message-list' i]",
+    "[data-testid*='message-stream' i]",
+    "[role='log']",
+    "[class*='message-list' i]",
+    "[class*='message-stream' i]",
+    "[class*='chat-history' i]",
+    "[class*='conversation-body' i]"
+  ].join(",");
   const LINE_COPILOT_MESSAGE_SELECTOR = [
     "[data-message-id]",
     "[data-testid*='message' i]",
     "[data-direction]",
     "[data-sender-type]",
-    "[class*='message' i]",
-    "[class*='bubble' i]",
-    "[class*='talk' i]",
-    "[role='listitem']"
+    "[data-message-type]",
+    "[class*='message-item' i]",
+    "[class*='message-row' i]",
+    "[class*='chat-message' i]",
+    "[class*='message-bubble' i]",
+    "[class~='bubble' i]",
+    "[class*='system-message' i]"
+  ].join(",");
+  const LINE_COPILOT_DEDICATED_TEXT_SELECTOR = [
+    "[data-testid*='message-text' i]",
+    "[data-testid*='bubble-text' i]",
+    "[class*='message-text' i]",
+    "[class*='bubble-text' i]",
+    "[class*='text-content' i]"
   ].join(",");
 
   const lineCopilotRuntime = {
     debounceId: null,
     lastUrl: window.location.href,
     lastDomUpdateAt: LINE_COPILOT_EMPTY_VALUE,
-    pendingReason: "initial-load"
+    pendingReason: "initial-load",
+    latestState: null
   };
 
   console.log("LINE COPILOT Loaded");
@@ -91,52 +120,48 @@
 
     let ancestor = element.parentElement;
     let checkedAncestors = 0;
-    while (ancestor && ancestor !== document.body && checkedAncestors < 8) {
+    while (ancestor && ancestor !== document.body && checkedAncestors < 10) {
       const ancestorStyle = window.getComputedStyle(ancestor);
-      const clipsContent = /(auto|scroll|hidden|clip)/.test(
-        `${ancestorStyle.overflow} ${ancestorStyle.overflowX} ${ancestorStyle.overflowY}`
-      );
-      if (clipsContent) {
+      if (
+        /(auto|scroll|hidden|clip)/.test(
+          `${ancestorStyle.overflow} ${ancestorStyle.overflowX} ${ancestorStyle.overflowY}`
+        )
+      ) {
         const ancestorRect = ancestor.getBoundingClientRect();
-        const hasIntersection =
-          rect.right > ancestorRect.left &&
-          rect.left < ancestorRect.right &&
-          rect.bottom > ancestorRect.top &&
-          rect.top < ancestorRect.bottom;
-        if (!hasIntersection) {
+        if (
+          rect.right <= ancestorRect.left ||
+          rect.left >= ancestorRect.right ||
+          rect.bottom <= ancestorRect.top ||
+          rect.top >= ancestorRect.bottom
+        ) {
           return false;
         }
       }
       ancestor = ancestor.parentElement;
       checkedAncestors += 1;
     }
-
     return true;
   }
 
-  function lineCopilotGetSignal(element) {
-    const signalParts = [];
+  function lineCopilotGetSignal(element, stopElement = null) {
+    const parts = [];
     let current = element;
     let depth = 0;
-
-    while (current && current !== document.body && depth < 4) {
-      signalParts.push(
+    while (current && current !== document.body && current !== stopElement && depth < 7) {
+      parts.push(
         current.id,
-        current.className,
+        typeof current.className === "string" ? current.className : "",
         current.getAttribute("data-testid"),
         current.getAttribute("data-direction"),
         current.getAttribute("data-sender-type"),
         current.getAttribute("data-message-type"),
+        current.getAttribute("role"),
         current.getAttribute("aria-label")
       );
       current = current.parentElement;
       depth += 1;
     }
-
-    return signalParts
-      .filter((value) => typeof value === "string")
-      .join(" ")
-      .toLowerCase();
+    return parts.filter(Boolean).join(" ").toLowerCase();
   }
 
   function lineCopilotGetUsableRightEdge() {
@@ -156,308 +181,592 @@
           return { value: null, strategy: "url:not-chat-host" };
         }
 
-        const queryKeys = ["conversationId", "chatId", "roomId", "userId"];
-        for (const key of queryKeys) {
+        for (const key of ["conversationId", "chatId", "roomId", "userId"]) {
           const value = currentUrl.searchParams.get(key);
           if (value && /^[A-Za-z0-9_-]{8,}$/.test(value)) {
             return { value, strategy: `url:query-${key}` };
           }
         }
 
-        const ignoredSegments = new Set([
-          "chat",
-          "account",
-          "settings",
-          "login",
-          "home",
-          "list"
-        ]);
-        const pathSegments = currentUrl.pathname
+        const ignored = new Set(["chat", "account", "settings", "login", "home", "list"]);
+        const candidate = currentUrl.pathname
           .split("/")
-          .map((segment) => decodeURIComponent(segment).trim())
-          .filter(Boolean);
-        const pathCandidate = pathSegments.find(
-          (segment) =>
-            /^[A-Za-z0-9_-]{12,}$/.test(segment) &&
-            !ignoredSegments.has(segment.toLowerCase())
-        );
-
-        return pathCandidate
-          ? { value: pathCandidate, strategy: "url:path-segment" }
+          .map((part) => decodeURIComponent(part).trim())
+          .filter(Boolean)
+          .find(
+            (part) =>
+              /^[A-Za-z0-9_-]{12,}$/.test(part) && !ignored.has(part.toLowerCase())
+          );
+        return candidate
+          ? { value: candidate, strategy: "url:path-segment" }
           : { value: null, strategy: "url:no-identifier" };
       },
       { value: null, strategy: "url:error" }
     );
   }
 
-  function lineCopilotIsPlausibleContactName(text) {
-    if (!text || text.length > 80 || LINE_COPILOT_TIME_PATTERN.test(text)) {
-      return false;
-    }
-
-    if (/^\d+$/.test(text) || /https?:\/\//i.test(text)) {
-      return false;
-    }
-
-    const excludedText = /LINE\s*(Official|COPILOT|VOOM)|聊天室|聊天設定|待處理|處理完畢|搜尋|搜索|傳送|自動回應|使用手動聊天|目前聊天室|目前網址|尚未偵測到/i;
-    return !excludedText.test(text);
-  }
-
-  function detectContactName() {
+  function lineCopilotFindMessageStream() {
     return lineCopilotSafeRun(
-      "contact name detection",
+      "message stream detection",
       () => {
         const usableRight = lineCopilotGetUsableRightEdge();
-        const candidates = [];
-        const seenElements = new Set();
+        const candidates = new Map();
 
         const addCandidate = (element, strategy, baseScore) => {
-          if (
-            seenElements.has(element) ||
-            !lineCopilotIsElementVisible(element) ||
-            element.closest("nav,aside")
-          ) {
+          if (!lineCopilotIsElementVisible(element) || element.closest("nav,aside,form")) {
             return;
           }
-
-          seenElements.add(element);
           const rect = element.getBoundingClientRect();
           if (
-            rect.top < 60 ||
-            rect.top > Math.min(260, window.innerHeight * 0.36) ||
-            rect.left < usableRight * 0.2 ||
-            rect.right > usableRight
+            rect.left < usableRight * 0.18 ||
+            rect.right > usableRight + 2 ||
+            rect.top < 70 ||
+            rect.width < 260 ||
+            rect.height < 140
           ) {
             return;
           }
 
-          const attributeText =
-            element.getAttribute("aria-label") || element.getAttribute("title") || "";
-          const text = lineCopilotNormalizeText(
-            element.innerText || element.textContent || attributeText
-          ).split("\n")[0];
-          if (!lineCopilotIsPlausibleContactName(text)) {
-            return;
-          }
-
-          const signal = lineCopilotGetSignal(element);
-          let score = baseScore;
-          if (rect.top >= 75 && rect.top <= 190) score += 28;
-          if (rect.left >= usableRight * 0.25) score += 12;
-          if (/(contact|profile|user|friend|member|name|title)/.test(signal)) score += 18;
-          if (/(chat|conversation|room).*(header|head)|header.*(chat|conversation|room)/.test(signal)) {
-            score += 28;
-          }
-          if (element.matches("h1,h2,h3,[role='heading']")) score += 15;
-          if (text.length <= 30) score += 8;
-
-          candidates.push({ element, text, score, strategy, rect });
-        };
-
-        const semanticElements = document.querySelectorAll(
-          "h1,h2,h3,[role='heading'],[data-testid*='name' i],[data-testid*='title' i],[class*='contact' i],[class*='profile' i],[class*='user-name' i],[class*='chat-title' i],[title],[aria-label]"
-        );
-        Array.from(semanticElements)
-          .slice(0, 700)
-          .forEach((element) => addCandidate(element, "name:semantic-and-attribute", 45));
-
-        if (!candidates.some((candidate) => candidate.score >= 80)) {
-          const fallbackElements = document.querySelectorAll("body *");
-          Array.from(fallbackElements)
-            .slice(0, 1800)
-            .filter((element) => element.children.length <= 2)
-            .forEach((element) => addCandidate(element, "name:visible-header-geometry", 20));
-        }
-
-        candidates.sort((left, right) => right.score - left.score);
-        const bestCandidate = candidates[0];
-        return {
-          value: bestCandidate?.text || null,
-          strategy: bestCandidate?.strategy || "name:no-candidate",
-          candidateCount: candidates.length
-        };
-      },
-      { value: null, strategy: "name:error", candidateCount: 0 }
-    );
-  }
-
-  function lineCopilotExtractMessageTime(element, rawText) {
-    const directMatch = rawText.match(LINE_COPILOT_TIME_PATTERN);
-    if (directMatch) {
-      return directMatch[0].replace(/\s+/g, " ").trim();
-    }
-
-    const nearbyElements = [
-      element.previousElementSibling,
-      element.nextElementSibling,
-      element.parentElement?.querySelector("time,[class*='time' i],[data-testid*='time' i]")
-    ].filter(Boolean);
-
-    for (const nearbyElement of nearbyElements) {
-      if (!lineCopilotIsElementVisible(nearbyElement)) continue;
-      const nearbyText = lineCopilotNormalizeText(
-        nearbyElement.innerText || nearbyElement.textContent
-      );
-      const nearbyMatch = nearbyText.match(LINE_COPILOT_TIME_PATTERN);
-      if (nearbyMatch) {
-        return nearbyMatch[0].replace(/\s+/g, " ").trim();
-      }
-    }
-
-    return null;
-  }
-
-  function lineCopilotExtractMessageText(rawText) {
-    const lines = String(rawText || "")
-      .split(/\n+/)
-      .map((line) => lineCopilotNormalizeText(line))
-      .map((line) => line.replace(LINE_COPILOT_TIME_PATTERN, "").trim())
-      .filter(Boolean)
-      .filter((line) => !/^(已讀|未讀|傳送|重試|刪除|回覆|客戶|客服)$/i.test(line));
-    return lineCopilotNormalizeText(lines.join(" "));
-  }
-
-  function lineCopilotIsPlausibleMessageText(text) {
-    if (!text || text.length > 500 || text.split("\n").length > 5) {
-      return false;
-    }
-
-    const excludedText = /LINE\s*(Official|COPILOT)|目前聊天室|最近可見訊息|顯示偵錯資訊|關閉面板|測試功能|使用手動聊天|待處理|處理完畢|搜尋|搜索/i;
-    return !excludedText.test(text) && !/^https?:\/\//i.test(text);
-  }
-
-  function lineCopilotDetectMessageRole(element, rect, conversationBounds) {
-    const signal = lineCopilotGetSignal(element);
-    if (/(incoming|received|receive|customer|guest|friend|from-user|left)/.test(signal)) {
-      return { role: "customer", strategy: "role:attribute-incoming" };
-    }
-    if (/(outgoing|sent|send|agent|operator|staff|admin|from-self|mine|owner|right)/.test(signal)) {
-      return { role: "agent", strategy: "role:attribute-outgoing" };
-    }
-
-    const midpoint = (conversationBounds.left + conversationBounds.right) / 2;
-    const margin = (conversationBounds.right - conversationBounds.left) * 0.1;
-    const center = rect.left + rect.width / 2;
-    if (center < midpoint - margin && rect.width < conversationBounds.width * 0.72) {
-      return { role: "customer", strategy: "role:geometry-left" };
-    }
-    if (center > midpoint + margin && rect.width < conversationBounds.width * 0.72) {
-      return { role: "agent", strategy: "role:geometry-right" };
-    }
-
-    return { role: "unknown", strategy: "role:unknown" };
-  }
-
-  function detectVisibleMessages() {
-    return lineCopilotSafeRun(
-      "visible message detection",
-      () => {
-        const usableRight = lineCopilotGetUsableRightEdge();
-        const conversationBounds = {
-          left: Math.max(220, usableRight * 0.22),
-          right: usableRight,
-          width: usableRight - Math.max(220, usableRight * 0.22)
-        };
-        const candidates = [];
-        const seenElements = new Set();
-
-        const addMessageCandidate = (element, strategy, baseScore) => {
-          if (
-            seenElements.has(element) ||
-            !lineCopilotIsElementVisible(element) ||
-            element.closest("nav,aside,header,footer,form")
-          ) {
-            return;
-          }
-          seenElements.add(element);
-
-          const rect = element.getBoundingClientRect();
-          if (
-            rect.left < conversationBounds.left ||
-            rect.right > conversationBounds.right + 2 ||
-            rect.top < 105 ||
-            rect.bottom > window.innerHeight + 1 ||
-            rect.width > conversationBounds.width * 0.9
-          ) {
-            return;
-          }
-
-          const rawText = lineCopilotNormalizeText(element.innerText || element.textContent);
-          const text = lineCopilotExtractMessageText(rawText);
-          if (!lineCopilotIsPlausibleMessageText(text)) {
-            return;
-          }
-
-          const time = lineCopilotExtractMessageTime(element, rawText);
-          const roleResult = lineCopilotDetectMessageRole(
-            element,
-            rect,
-            conversationBounds
+          const style = window.getComputedStyle(element);
+          const descendantCount = Math.min(
+            element.querySelectorAll(LINE_COPILOT_MESSAGE_SELECTOR).length,
+            8
           );
-          const signal = lineCopilotGetSignal(element);
-          let score = baseScore;
-          if (element.hasAttribute("data-message-id")) score += 35;
-          if (element.hasAttribute("data-direction")) score += 25;
-          if (/(message|bubble|talk)/.test(signal)) score += 18;
-          if (time) score += 8;
-          if (roleResult.role !== "unknown") score += 8;
-
-          candidates.push({
-            element,
-            text,
-            time: time || LINE_COPILOT_EMPTY_VALUE,
-            role: roleResult.role,
-            roleStrategy: roleResult.strategy,
-            strategy,
-            score,
-            top: rect.top,
-            bottom: rect.bottom
-          });
+          let score = baseScore + descendantCount * 5;
+          if (/(auto|scroll)/.test(`${style.overflowY} ${style.overflow}`)) score += 16;
+          if (/(message|chat|conversation|history|stream)/.test(lineCopilotGetSignal(element))) {
+            score += 16;
+          }
+          const existing = candidates.get(element);
+          if (!existing || score > existing.score) {
+            candidates.set(element, { element, rect, score, strategy });
+          }
         };
 
-        const structuralElements = document.querySelectorAll(LINE_COPILOT_MESSAGE_SELECTOR);
-        Array.from(structuralElements)
-          .slice(0, 900)
-          .forEach((element) => addMessageCandidate(element, "messages:structural-signals", 45));
+        document
+          .querySelectorAll(LINE_COPILOT_STREAM_SELECTOR)
+          .forEach((element) => addCandidate(element, "stream:semantic-container", 55));
 
-        const fallbackElements = document.querySelectorAll("p,span,div");
-        Array.from(fallbackElements)
-          .slice(0, 2200)
-          .filter((element) => element.children.length === 0)
-          .forEach((element) => addMessageCandidate(element, "messages:visible-text-geometry", 12));
-
-        const uniqueMessages = new Map();
-        candidates.forEach((candidate) => {
-          const key = `${candidate.text}\u0000${candidate.time}`;
-          const existing = uniqueMessages.get(key);
-          if (!existing || candidate.score > existing.score) {
-            uniqueMessages.set(key, candidate);
+        const messageNodes = Array.from(
+          document.querySelectorAll(LINE_COPILOT_MESSAGE_SELECTOR)
+        ).slice(0, 500);
+        messageNodes.forEach((messageNode) => {
+          let ancestor = messageNode.parentElement;
+          let depth = 0;
+          while (ancestor && ancestor !== document.body && depth < 5) {
+            if (ancestor.querySelectorAll(LINE_COPILOT_MESSAGE_SELECTOR).length >= 2) {
+              addCandidate(ancestor, "stream:common-message-ancestor", 25 - depth * 2);
+            }
+            ancestor = ancestor.parentElement;
+            depth += 1;
           }
         });
 
-        const sortedMessages = Array.from(uniqueMessages.values()).sort(
-          (left, right) => left.bottom - right.bottom || left.top - right.top
+        const sorted = Array.from(candidates.values()).sort(
+          (left, right) => right.score - left.score
         );
-        const recentMessages = sortedMessages.slice(-LINE_COPILOT_MESSAGE_LIMIT).map(
-          ({ text, time, role, roleStrategy, strategy }) => ({
-            text,
-            time,
-            role,
-            roleStrategy,
-            strategy
-          })
-        );
-        const strategies = Array.from(
-          new Set(recentMessages.map((message) => message.strategy))
+        const selected = sorted[0];
+        return {
+          element: selected?.score >= 45 ? selected.element : null,
+          rect: selected?.score >= 45 ? selected.rect : null,
+          strategy: selected?.score >= 45 ? selected.strategy : "stream:not-found",
+          candidateCount: sorted.length
+        };
+      },
+      { element: null, rect: null, strategy: "stream:error", candidateCount: 0 }
+    );
+  }
+
+  function lineCopilotDirectText(element) {
+    const rawDirectText = Array.from(element.childNodes)
+      .filter((node) => node.nodeType === Node.TEXT_NODE)
+      .map((node) => node.textContent)
+      .join(" ");
+    const attributeText = element.getAttribute("aria-label") || element.getAttribute("title");
+    const rawText = rawDirectText.trim()
+      ? rawDirectText
+      : element.children.length === 0
+        ? element.textContent
+        : attributeText;
+    return { raw: String(rawText || ""), normalized: lineCopilotNormalizeText(rawText) };
+  }
+
+  function lineCopilotIsPlausibleContactName(rawText, text) {
+    if (!text || text.length > 60 || rawText.includes("\n") || /https?:\/\//i.test(text)) {
+      return false;
+    }
+    if (/^\d+$/.test(text) || LINE_COPILOT_DATE_PATTERN.test(text) || LINE_COPILOT_TIME_PATTERN.test(text)) {
+      return false;
+    }
+    const excluded = /^(今天|昨天|日期|時間|待處理|處理完畢|搜尋|搜索|使用手動聊天|自動回應訊息(?:功能執行中)?|LINE|LINE COPILOT)$/i;
+    return !excluded.test(text);
+  }
+
+  function lineCopilotFindChatHeader(streamResult) {
+    if (!streamResult.element || !streamResult.rect) {
+      return { element: null, strategy: "header:no-stream", score: 0 };
+    }
+
+    const streamRect = streamResult.rect;
+    const candidates = [];
+    document.querySelectorAll(LINE_COPILOT_HEADER_SELECTOR).forEach((element) => {
+      if (!lineCopilotIsElementVisible(element) || element.closest("nav,aside")) return;
+      const rect = element.getBoundingClientRect();
+      const overlap = Math.max(
+        0,
+        Math.min(rect.right, streamRect.right) - Math.max(rect.left, streamRect.left)
+      );
+      const overlapRatio = overlap / Math.max(1, Math.min(rect.width, streamRect.width));
+      if (
+        overlapRatio < 0.55 ||
+        rect.bottom > streamRect.top + 110 ||
+        rect.top < 45 ||
+        rect.top > 260
+      ) {
+        return;
+      }
+      let score = 45 + overlapRatio * 30;
+      if (rect.bottom <= streamRect.top + 25) score += 24;
+      if (/(chat|conversation|room).*(header|head)|header.*(chat|conversation|room)/.test(lineCopilotGetSignal(element))) {
+        score += 24;
+      }
+      candidates.push({ element, score, strategy: "header:stream-aligned" });
+    });
+    candidates.sort((left, right) => right.score - left.score);
+    return candidates[0] || { element: null, strategy: "header:not-found", score: 0 };
+  }
+
+  function lineCopilotAvatarEvidence(header, nameRect) {
+    const avatars = header.querySelectorAll(
+      "img,[data-testid*='avatar' i],[class*='avatar' i],[class*='profile-image' i]"
+    );
+    for (const avatar of avatars) {
+      if (!lineCopilotIsElementVisible(avatar)) continue;
+      const rect = avatar.getBoundingClientRect();
+      const horizontalGap = nameRect.left - rect.right;
+      const verticalDistance = Math.abs(
+        nameRect.top + nameRect.height / 2 - (rect.top + rect.height / 2)
+      );
+      if (horizontalGap >= -8 && horizontalGap <= 150 && verticalDistance <= 45) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function detectContactName(streamResult) {
+    return lineCopilotSafeRun(
+      "contact name detection",
+      () => {
+        const headerResult = lineCopilotFindChatHeader(streamResult);
+        if (!headerResult.element) {
+          return {
+            value: null,
+            strategy: headerResult.strategy,
+            candidateCount: 0,
+            candidates: [],
+            selectionReason: "未找到與訊息串對齊的聊天室 header"
+          };
+        }
+
+        const header = headerResult.element;
+        const headerRect = header.getBoundingClientRect();
+        const candidates = [];
+        const elements = [
+          header,
+          ...header.querySelectorAll(
+            "h1,h2,h3,[role='heading'],[data-testid*='name' i],[class*='name' i],[class*='title' i],span,div"
+          )
+        ];
+        const seenText = new Set();
+
+        elements.slice(0, 350).forEach((element) => {
+          if (!lineCopilotIsElementVisible(element)) return;
+          const { raw, normalized: text } = lineCopilotDirectText(element);
+          if (!lineCopilotIsPlausibleContactName(raw, text) || seenText.has(text)) return;
+          seenText.add(text);
+
+          const rect = element.getBoundingClientRect();
+          if (
+            rect.left < headerRect.left ||
+            rect.right > headerRect.right + 2 ||
+            rect.top < headerRect.top ||
+            rect.bottom > headerRect.bottom + 2
+          ) {
+            return;
+          }
+
+          const style = window.getComputedStyle(element);
+          const fontSize = Number.parseFloat(style.fontSize || "0");
+          const fontWeight = Number.parseInt(style.fontWeight || "400", 10) || 400;
+          const evidence = ["位於與訊息串對齊的聊天室 header"];
+          let score = 55;
+          if (element.matches("h1,h2,h3,[role='heading']")) {
+            score += 22;
+            evidence.push("具 heading 語意");
+          }
+          if (/(contact|profile|user|friend|member|name|title)/.test(lineCopilotGetSignal(element, header))) {
+            score += 18;
+            evidence.push("具有 name/profile 屬性訊號");
+          }
+          if (fontSize >= 18) {
+            score += 20;
+            evidence.push(`字型 ${fontSize}px`);
+          } else if (fontSize >= 15) {
+            score += 10;
+            evidence.push(`字型 ${fontSize}px`);
+          }
+          if (fontWeight >= 600) {
+            score += 7;
+            evidence.push("字重較高");
+          }
+          if (lineCopilotAvatarEvidence(header, rect)) {
+            score += 32;
+            evidence.push("位於頭像右側且垂直相鄰");
+          }
+          if (element.parentElement && /flex/.test(window.getComputedStyle(element.parentElement).display)) {
+            score += 6;
+            evidence.push("父層為 header flex 結構");
+          }
+          if (text.length <= 30) score += 5;
+
+          candidates.push({ text, score: Math.round(score), evidence });
+        });
+
+        candidates.sort((left, right) => right.score - left.score);
+        const selected = candidates[0]?.score >= 75 ? candidates[0] : null;
+        return {
+          value: selected?.text || null,
+          strategy: selected ? "name:header-avatar-scoring" : "name:low-confidence",
+          candidateCount: candidates.length,
+          candidates: candidates.slice(0, 12),
+          selectionReason: selected
+            ? `選擇最高分 ${selected.score}：${selected.evidence.join("；")}`
+            : "所有 header 名稱候選分數低於 75，寧可不猜測"
+        };
+      },
+      {
+        value: null,
+        strategy: "name:error",
+        candidateCount: 0,
+        candidates: [],
+        selectionReason: "名稱偵測發生錯誤"
+      }
+    );
+  }
+
+  function lineCopilotExtractMessageTime(element, rawText, stream) {
+    const direct = rawText.match(LINE_COPILOT_TIME_PATTERN);
+    if (direct) return direct[0].replace(/\s+/g, " ").trim();
+
+    const nearby = [
+      element.querySelector("time,[class*='time' i],[data-testid*='time' i]"),
+      element.previousElementSibling,
+      element.nextElementSibling,
+      element.parentElement?.querySelector("time,[class*='time' i]")
+    ].filter((candidate) => candidate && stream.contains(candidate));
+    for (const candidate of nearby) {
+      if (!lineCopilotIsElementVisible(candidate)) continue;
+      const match = lineCopilotNormalizeText(candidate.textContent).match(
+        LINE_COPILOT_TIME_PATTERN
+      );
+      if (match) return match[0].replace(/\s+/g, " ").trim();
+    }
+    return null;
+  }
+
+  function lineCopilotCleanMessageText(rawText) {
+    return lineCopilotNormalizeText(
+      String(rawText || "")
+        .split(/\n+/)
+        .map((line) => lineCopilotNormalizeText(line))
+        .map((line) => line.replace(LINE_COPILOT_TIME_PATTERN, "").trim())
+        .filter(Boolean)
+        .filter((line) => !/^(已讀|未讀|傳送|重試|刪除|回覆)$/i.test(line))
+        .join(" ")
+    );
+  }
+
+  function lineCopilotExtractMessagePayload(candidate) {
+    const dedicatedNodes = Array.from(
+      candidate.querySelectorAll(LINE_COPILOT_DEDICATED_TEXT_SELECTOR)
+    ).filter(
+      (element) =>
+        lineCopilotIsElementVisible(element) &&
+        !element.closest("button,a,menu,[role='button'],[role='menu'],[role='toolbar']")
+    );
+    const dedicated = dedicatedNodes.find((element) => {
+      const text = lineCopilotCleanMessageText(element.innerText || element.textContent);
+      return Boolean(text);
+    });
+    const sourceElement = dedicated || candidate;
+    const rawText = lineCopilotNormalizeText(
+      sourceElement.innerText || sourceElement.textContent
+    );
+    return {
+      sourceElement,
+      rawText,
+      text: lineCopilotCleanMessageText(rawText),
+      strategy: dedicated ? "text:dedicated-message-node" : "text:message-root"
+    };
+  }
+
+  function lineCopilotClassifyExclusion(candidate, payload, stream) {
+    const { sourceElement, text } = payload;
+    if (!text) return "empty-text";
+    if (text.length > 600 || text.split("\n").length > 5) return "text-too-large";
+    if (LINE_COPILOT_DATE_PATTERN.test(text) || LINE_COPILOT_TIME_PATTERN.test(text)) {
+      return "date-or-time-divider";
+    }
+    if (/^(已讀|未讀|傳送|預約傳送|使用手動聊天|待處理|處理完畢|搜尋|搜索)$/i.test(text)) {
+      return "known-ui-or-status-text";
+    }
+    if (/自動回應訊息|使用手動聊天|目前為回應時間內|預約傳送/.test(text)) {
+      return "system-control-prompt";
+    }
+    if (/^(加\s*LINE\s*好友|手機聯絡|立即購買|查看更多|開啟連結)$/i.test(text)) {
+      return "known-card-action-text";
+    }
+
+    const signal = lineCopilotGetSignal(candidate, stream);
+    const interactiveAncestor = sourceElement.closest(
+      "button,a,menu,[role='button'],[role='menu'],[role='toolbar'],[class*='toolbar' i],[class*='action-area' i]"
+    );
+    if (interactiveAncestor && stream.contains(interactiveAncestor)) {
+      return "interactive-control-text";
+    }
+    if (
+      /(rich.?menu|imagemap|image.?map|carousel|card|template|quick.?reply|coupon|product.?card|button.?area|action.?area|toolbar)/.test(
+        signal
+      )
+    ) {
+      return "rich-menu-or-card-container";
+    }
+
+    const controls = candidate.querySelectorAll(
+      "button,a,menu,[role='button'],[role='menu'],[role='toolbar']"
+    );
+    if (controls.length > 0 && payload.strategy !== "text:dedicated-message-node") {
+      return "message-root-contains-controls";
+    }
+
+    const media = candidate.querySelector("img,picture,video,canvas,svg,[class*='image' i]");
+    if (media && payload.strategy !== "text:dedicated-message-node") {
+      return "media-without-independent-text";
+    }
+    return null;
+  }
+
+  function lineCopilotFindNearbyAvatar(candidate, messageRect, stream) {
+    const searchRoot = candidate.parentElement && stream.contains(candidate.parentElement)
+      ? candidate.parentElement
+      : candidate;
+    const avatars = searchRoot.querySelectorAll(
+      "img,[data-testid*='avatar' i],[class*='avatar' i],[class*='profile-image' i]"
+    );
+    for (const avatar of avatars) {
+      if (!lineCopilotIsElementVisible(avatar)) continue;
+      const rect = avatar.getBoundingClientRect();
+      const verticalOverlap = Math.min(rect.bottom, messageRect.bottom) - Math.max(rect.top, messageRect.top);
+      if (verticalOverlap <= 0) continue;
+      if (rect.right <= messageRect.left && messageRect.left - rect.right <= 90) return "left";
+      if (rect.left >= messageRect.right && rect.left - messageRect.right <= 90) return "right";
+    }
+    return null;
+  }
+
+  function lineCopilotDetectMessageRole(candidate, payloadElement, stream) {
+    const signal = lineCopilotGetSignal(candidate, stream);
+    const scores = { customer: 0, operator: 0, system: 0 };
+    const evidence = [];
+
+    if (/(system|notice|announcement|event-message)/.test(signal)) {
+      scores.system += 9;
+      evidence.push("system DOM 訊號 +9");
+    }
+    if (/(incoming|received|receive|customer|guest|friend|from-user)/.test(signal)) {
+      scores.customer += 8;
+      evidence.push("incoming/customer 屬性 +8");
+    }
+    if (/(outgoing|sent|send|operator|agent|staff|admin|from-self|mine|owner)/.test(signal)) {
+      scores.operator += 8;
+      evidence.push("outgoing/operator 屬性 +8");
+    }
+
+    const rect = payloadElement.getBoundingClientRect();
+    const streamRect = stream.getBoundingClientRect();
+    const style = window.getComputedStyle(candidate);
+    const parentStyle = candidate.parentElement
+      ? window.getComputedStyle(candidate.parentElement)
+      : null;
+    if (style.alignSelf === "flex-end" || style.marginLeft === "auto") {
+      scores.operator += 3;
+      evidence.push("flex-end／margin-left:auto +3");
+    }
+    if (style.alignSelf === "flex-start" || style.marginRight === "auto") {
+      scores.customer += 2;
+      evidence.push("flex-start／margin-right:auto +2");
+    }
+    if (parentStyle?.justifyContent === "flex-end") {
+      scores.operator += 2;
+      evidence.push("父層 justify-content:flex-end +2");
+    } else if (parentStyle?.justifyContent === "flex-start") {
+      scores.customer += 1;
+      evidence.push("父層 justify-content:flex-start +1");
+    }
+
+    const avatarSide = lineCopilotFindNearbyAvatar(candidate, rect, stream);
+    if (avatarSide === "left") {
+      scores.customer += 3;
+      evidence.push("訊息左側鄰近頭像 +3");
+    } else if (avatarSide === "right") {
+      scores.operator += 3;
+      evidence.push("訊息右側鄰近頭像 +3");
+    }
+
+    const centerRatio = (rect.left + rect.width / 2 - streamRect.left) / Math.max(1, streamRect.width);
+    if (rect.width < streamRect.width * 0.62 && centerRatio < 0.42) {
+      scores.customer += 2;
+      evidence.push("明顯位於訊息串左側 +2");
+    } else if (rect.width < streamRect.width * 0.62 && centerRatio > 0.58) {
+      scores.operator += 2;
+      evidence.push("明顯位於訊息串右側 +2");
+    }
+
+    const ranked = Object.entries(scores).sort((left, right) => right[1] - left[1]);
+    const [topRole, topScore] = ranked[0];
+    const secondScore = ranked[1][1];
+    if (topScore >= 7 && topScore - secondScore >= 3) {
+      return { role: topRole, confidence: "high", evidence, scores };
+    }
+    if (topScore >= 4 && topScore - secondScore >= 2) {
+      return { role: topRole, confidence: "medium", evidence, scores };
+    }
+    return {
+      role: "unknown",
+      confidence: "low",
+      evidence: [...evidence, "證據分數不足，輸出 unknown"],
+      scores
+    };
+  }
+
+  function detectVisibleMessages(streamResult) {
+    return lineCopilotSafeRun(
+      "visible message detection",
+      () => {
+        if (!streamResult.element) {
+          return {
+            messages: [],
+            excludedCandidates: [],
+            strategy: "messages:no-stream",
+            candidateCount: 0
+          };
+        }
+
+        const stream = streamResult.element;
+        const accepted = [];
+        const excluded = [];
+        const candidates = Array.from(stream.querySelectorAll(LINE_COPILOT_MESSAGE_SELECTOR)).slice(
+          0,
+          900
         );
 
+        candidates.forEach((candidate) => {
+          if (!lineCopilotIsElementVisible(candidate)) {
+            excluded.push({ text: "", reason: "not-visible", sourceStrategy: "candidate:structural" });
+            return;
+          }
+
+          const payload = lineCopilotExtractMessagePayload(candidate);
+          const exclusionReason = lineCopilotClassifyExclusion(candidate, payload, stream);
+          if (exclusionReason) {
+            excluded.push({
+              text: payload.text.slice(0, 160),
+              reason: exclusionReason,
+              sourceStrategy: payload.strategy
+            });
+            return;
+          }
+
+          const rect = payload.sourceElement.getBoundingClientRect();
+          const streamRect = stream.getBoundingClientRect();
+          if (
+            rect.left < streamRect.left - 1 ||
+            rect.right > streamRect.right + 1 ||
+            rect.top < streamRect.top - 1 ||
+            rect.bottom > streamRect.bottom + 1
+          ) {
+            excluded.push({
+              text: payload.text.slice(0, 160),
+              reason: "outside-visible-stream-bounds",
+              sourceStrategy: payload.strategy
+            });
+            return;
+          }
+
+          const rawText = lineCopilotNormalizeText(candidate.innerText || candidate.textContent);
+          const time = lineCopilotExtractMessageTime(candidate, rawText, stream);
+          const roleResult = lineCopilotDetectMessageRole(
+            candidate,
+            payload.sourceElement,
+            stream
+          );
+          let detectionScore = payload.strategy === "text:dedicated-message-node" ? 60 : 35;
+          if (candidate.hasAttribute("data-message-id")) detectionScore += 30;
+          if (candidate.hasAttribute("data-direction")) detectionScore += 20;
+          if (time) detectionScore += 5;
+
+          accepted.push({
+            text: payload.text,
+            role: roleResult.role,
+            time,
+            confidence: roleResult.confidence,
+            sourceStrategy: `${payload.strategy}; ${roleResult.evidence.join("; ")}`,
+            roleEvidence: roleResult.evidence,
+            roleScores: roleResult.scores,
+            detectionScore,
+            top: rect.top,
+            bottom: rect.bottom
+          });
+        });
+
+        const unique = new Map();
+        const confidenceRank = { high: 3, medium: 2, low: 1 };
+        accepted.forEach((message) => {
+          const key = `${message.text}\u0000${message.time || ""}`;
+          const existing = unique.get(key);
+          const quality = message.detectionScore + confidenceRank[message.confidence] * 5;
+          const existingQuality = existing
+            ? existing.detectionScore + confidenceRank[existing.confidence] * 5
+            : -1;
+          if (!existing || quality > existingQuality) unique.set(key, message);
+        });
+
+        const messages = Array.from(unique.values())
+          .sort((left, right) => left.bottom - right.bottom || left.top - right.top)
+          .slice(-LINE_COPILOT_MESSAGE_LIMIT)
+          .map(({ text, role, time, confidence, sourceStrategy, roleEvidence, roleScores }) => ({
+            text,
+            role,
+            time,
+            confidence,
+            sourceStrategy,
+            roleEvidence,
+            roleScores
+          }));
         return {
-          messages: recentMessages,
-          strategy: strategies.join(" + ") || "messages:no-candidate",
+          messages,
+          excludedCandidates: excluded.slice(0, 40),
+          strategy: `messages:strict-structural-in-${streamResult.strategy}`,
           candidateCount: candidates.length
         };
       },
-      { messages: [], strategy: "messages:error", candidateCount: 0 }
+      {
+        messages: [],
+        excludedCandidates: [],
+        strategy: "messages:error",
+        candidateCount: 0
+      }
     );
   }
 
@@ -465,7 +774,6 @@
     const detectedAt = lineCopilotFormatTimestamp();
     const currentUrl = window.location.href;
     const isChatHost = window.location.hostname === "chat.line.biz";
-
     if (!isChatHost) {
       return {
         isOpen: false,
@@ -474,22 +782,26 @@
         conversationId: LINE_COPILOT_EMPTY_VALUE,
         detectedAt,
         messages: [],
+        contactNameCandidates: [],
+        excludedCandidates: [],
         debug: {
           nameCandidateCount: 0,
           messageCandidateCount: 0,
+          streamCandidateCount: 0,
           strategy: "host:manager-page-only",
+          contactSelectionReason: "不在 chat.line.biz",
           lastDomUpdateAt: lineCopilotRuntime.lastDomUpdateAt
         }
       };
     }
 
     const conversationResult = detectConversationId();
-    const contactResult = detectContactName();
-    const messagesResult = detectVisibleMessages();
+    const streamResult = lineCopilotFindMessageStream();
+    const contactResult = detectContactName(streamResult);
+    const messagesResult = detectVisibleMessages(streamResult);
     const isOpen = Boolean(
       conversationResult.value || contactResult.value || messagesResult.messages.length
     );
-
     return {
       isOpen,
       contactName: contactResult.value || LINE_COPILOT_EMPTY_VALUE,
@@ -497,14 +809,19 @@
       conversationId: conversationResult.value || LINE_COPILOT_EMPTY_VALUE,
       detectedAt,
       messages: messagesResult.messages,
+      contactNameCandidates: contactResult.candidates,
+      excludedCandidates: messagesResult.excludedCandidates,
       debug: {
         nameCandidateCount: contactResult.candidateCount,
         messageCandidateCount: messagesResult.candidateCount,
+        streamCandidateCount: streamResult.candidateCount,
         strategy: [
           conversationResult.strategy,
+          streamResult.strategy,
           contactResult.strategy,
           messagesResult.strategy
         ].join(" / "),
+        contactSelectionReason: contactResult.selectionReason,
         lastDomUpdateAt: lineCopilotRuntime.lastDomUpdateAt
       }
     };
@@ -513,82 +830,179 @@
   function lineCopilotSetText(id, value) {
     const element = document.getElementById(id);
     if (element) {
-      element.textContent = value || LINE_COPILOT_EMPTY_VALUE;
-      element.title = value || LINE_COPILOT_EMPTY_VALUE;
+      const displayValue = value || LINE_COPILOT_EMPTY_VALUE;
+      element.textContent = displayValue;
+      element.title = displayValue;
     }
   }
 
   function lineCopilotRoleLabel(role) {
     if (role === "customer") return "客戶";
-    if (role === "agent") return "客服";
-    return "unknown";
+    if (role === "operator") return "客服";
+    if (role === "system") return "系統";
+    return "未知";
   }
 
   function lineCopilotRenderMessages(messages) {
     const list = document.getElementById("line-copilot-message-list");
     if (!list) return;
-
     list.replaceChildren();
     if (!messages.length) {
-      const emptyItem = document.createElement("li");
-      emptyItem.className = "line-copilot-message-empty";
-      emptyItem.textContent = LINE_COPILOT_EMPTY_VALUE;
-      list.appendChild(emptyItem);
+      const empty = document.createElement("li");
+      empty.className = "line-copilot-message-empty";
+      empty.textContent = LINE_COPILOT_EMPTY_VALUE;
+      list.appendChild(empty);
       return;
     }
 
     messages.forEach((message) => {
       const item = document.createElement("li");
       item.className = "line-copilot-message-item";
-
       const meta = document.createElement("div");
       meta.className = "line-copilot-message-meta";
-
       const role = document.createElement("span");
       role.className = `line-copilot-role line-copilot-role-${message.role}`;
       role.textContent = lineCopilotRoleLabel(message.role);
-
+      const confidence = document.createElement("span");
+      confidence.className = `line-copilot-confidence line-copilot-confidence-${message.confidence}`;
+      confidence.textContent = message.confidence;
       const time = document.createElement("time");
       time.className = "line-copilot-message-time";
-      time.textContent = message.time;
-
+      time.textContent = message.time || LINE_COPILOT_EMPTY_VALUE;
       const text = document.createElement("p");
       text.className = "line-copilot-message-text";
       text.textContent = message.text;
-
-      meta.append(role, time);
+      meta.append(role, confidence, time);
       item.append(meta, text);
       list.appendChild(item);
     });
   }
 
+  function lineCopilotRenderNameCandidates(candidates) {
+    const list = document.getElementById("line-copilot-debug-name-candidates");
+    if (!list) return;
+    list.replaceChildren();
+    if (!candidates.length) {
+      const item = document.createElement("li");
+      item.className = "line-copilot-debug-empty";
+      item.textContent = LINE_COPILOT_EMPTY_VALUE;
+      list.appendChild(item);
+      return;
+    }
+    candidates.forEach((candidate) => {
+      const item = document.createElement("li");
+      item.className = "line-copilot-debug-list-item";
+      item.textContent = `${candidate.text} — ${candidate.score} 分 — ${candidate.evidence.join("；")}`;
+      list.appendChild(item);
+    });
+  }
+
+  function lineCopilotRenderExcludedCandidates(candidates) {
+    const list = document.getElementById("line-copilot-debug-excluded");
+    if (!list) return;
+    list.replaceChildren();
+    const visibleCandidates = candidates.filter((candidate) => candidate.text).slice(0, 20);
+    if (!visibleCandidates.length) {
+      const item = document.createElement("li");
+      item.className = "line-copilot-debug-empty";
+      item.textContent = LINE_COPILOT_EMPTY_VALUE;
+      list.appendChild(item);
+      return;
+    }
+    visibleCandidates.forEach((candidate) => {
+      const item = document.createElement("li");
+      item.className = "line-copilot-debug-list-item";
+      item.textContent = `${candidate.text} — 排除：${candidate.reason}`;
+      list.appendChild(item);
+    });
+  }
+
+  function lineCopilotRenderRoleDiagnostics(messages) {
+    const list = document.getElementById("line-copilot-debug-role-evidence");
+    if (!list) return;
+    list.replaceChildren();
+    if (!messages.length) {
+      const item = document.createElement("li");
+      item.className = "line-copilot-debug-empty";
+      item.textContent = LINE_COPILOT_EMPTY_VALUE;
+      list.appendChild(item);
+      return;
+    }
+    messages.forEach((message) => {
+      const item = document.createElement("li");
+      item.className = "line-copilot-debug-list-item";
+      item.textContent = `${message.text} — ${message.role}/${message.confidence} — ${message.roleEvidence.join("；")}`;
+      list.appendChild(item);
+    });
+  }
+
   function updateCopilotPanel(state) {
+    lineCopilotRuntime.latestState = state;
     const statusCard = document.getElementById("line-copilot-status-card");
-    const statusText = state.isOpen ? "已開啟聊天室" : "尚未偵測到聊天室";
     statusCard?.classList.toggle("line-copilot-status-inactive", !state.isOpen);
-    lineCopilotSetText("line-copilot-status-text", statusText);
     lineCopilotSetText(
-      "line-copilot-chat-open",
-      state.isOpen ? "是" : "尚未偵測到"
+      "line-copilot-status-text",
+      state.isOpen ? "已開啟聊天室" : "尚未偵測到聊天室"
     );
+    lineCopilotSetText("line-copilot-chat-open", state.isOpen ? "是" : LINE_COPILOT_EMPTY_VALUE);
     lineCopilotSetText("line-copilot-contact-name", state.contactName);
     lineCopilotSetText("line-copilot-current-url", state.currentUrl);
     lineCopilotSetText("line-copilot-conversation-id", state.conversationId);
     lineCopilotSetText("line-copilot-detected-at", state.detectedAt);
-    lineCopilotSetText(
-      "line-copilot-debug-name-count",
-      String(state.debug.nameCandidateCount)
-    );
-    lineCopilotSetText(
-      "line-copilot-debug-message-count",
-      String(state.debug.messageCandidateCount)
-    );
+    lineCopilotSetText("line-copilot-debug-name-count", String(state.debug.nameCandidateCount));
+    lineCopilotSetText("line-copilot-debug-message-count", String(state.debug.messageCandidateCount));
+    lineCopilotSetText("line-copilot-debug-stream-count", String(state.debug.streamCandidateCount));
     lineCopilotSetText("line-copilot-debug-strategy", state.debug.strategy);
-    lineCopilotSetText(
-      "line-copilot-debug-dom-time",
-      state.debug.lastDomUpdateAt
-    );
+    lineCopilotSetText("line-copilot-debug-selection-reason", state.debug.contactSelectionReason);
+    lineCopilotSetText("line-copilot-debug-dom-time", state.debug.lastDomUpdateAt);
     lineCopilotRenderMessages(state.messages);
+    lineCopilotRenderNameCandidates(state.contactNameCandidates);
+    lineCopilotRenderExcludedCandidates(state.excludedCandidates);
+    lineCopilotRenderRoleDiagnostics(state.messages);
+  }
+
+  function lineCopilotBuildDiagnosticReport(state) {
+    return {
+      currentUrl: state?.currentUrl || window.location.href,
+      detectedContactName:
+        state?.contactName && state.contactName !== LINE_COPILOT_EMPTY_VALUE
+          ? state.contactName
+          : null,
+      contactNameCandidates: (state?.contactNameCandidates || []).map((candidate) => ({
+        text: candidate.text,
+        score: candidate.score,
+        evidence: [...candidate.evidence]
+      })),
+      conversationId:
+        state?.conversationId && state.conversationId !== LINE_COPILOT_EMPTY_VALUE
+          ? state.conversationId
+          : null,
+      detectedMessages: (state?.messages || []).map((message) => ({
+        text: message.text,
+        role: message.role,
+        time: message.time,
+        confidence: message.confidence,
+        sourceStrategy: message.sourceStrategy
+      })),
+      excludedCandidates: (state?.excludedCandidates || []).map((candidate) => ({
+        text: candidate.text,
+        reason: candidate.reason,
+        sourceStrategy: candidate.sourceStrategy
+      })),
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  async function lineCopilotCopyDiagnosticReport() {
+    const result = document.getElementById("line-copilot-debug-export-result");
+    try {
+      const report = lineCopilotBuildDiagnosticReport(lineCopilotRuntime.latestState);
+      await navigator.clipboard.writeText(JSON.stringify(report, null, 2));
+      if (result) result.textContent = "偵測報告已複製到剪貼簿";
+    } catch (error) {
+      console.warn("LINE COPILOT diagnostic copy failed", error);
+      if (result) result.textContent = "無法複製偵測報告，請確認剪貼簿權限";
+    }
   }
 
   function lineCopilotSetCollapsed(root, collapsed) {
@@ -602,26 +1016,18 @@
     root.className = "line-copilot-root";
     root.setAttribute("aria-label", "LINE COPILOT 面板");
     root.setAttribute("aria-expanded", "true");
-
     root.innerHTML = `
       <button id="line-copilot-expand-button" class="line-copilot-expand-button" type="button" aria-label="展開 LINE COPILOT 面板" title="展開 LINE COPILOT">LC</button>
       <section class="line-copilot-panel">
         <header class="line-copilot-header">
           <div class="line-copilot-heading-group">
             <span class="line-copilot-brand-mark" aria-hidden="true">LC</span>
-            <div class="line-copilot-heading-copy">
-              <h1 class="line-copilot-title">LINE COPILOT</h1>
-              <span class="line-copilot-subtitle">聊天室偵測器</span>
-            </div>
+            <div class="line-copilot-heading-copy"><h1 class="line-copilot-title">LINE COPILOT</h1><span class="line-copilot-subtitle">精準聊天室偵測</span></div>
           </div>
           <button id="line-copilot-collapse-button" class="line-copilot-icon-button" type="button" aria-label="收合 LINE COPILOT 面板" title="收合面板">›</button>
         </header>
         <main class="line-copilot-content">
-          <div id="line-copilot-status-card" class="line-copilot-status-card">
-            <span class="line-copilot-status-dot" aria-hidden="true"></span>
-            <span id="line-copilot-status-text" class="line-copilot-status-text">偵測中</span>
-          </div>
-
+          <div id="line-copilot-status-card" class="line-copilot-status-card"><span class="line-copilot-status-dot" aria-hidden="true"></span><span id="line-copilot-status-text" class="line-copilot-status-text">偵測中</span></div>
           <section class="line-copilot-detector-section" aria-labelledby="line-copilot-chat-heading">
             <h2 id="line-copilot-chat-heading" class="line-copilot-section-title">目前聊天室</h2>
             <dl class="line-copilot-detail-list">
@@ -632,65 +1038,51 @@
               <div class="line-copilot-detail-row line-copilot-detail-row-stacked"><dt class="line-copilot-detail-label">最後偵測時間</dt><dd id="line-copilot-detected-at" class="line-copilot-detail-value">偵測中</dd></div>
             </dl>
           </section>
-
           <section class="line-copilot-detector-section" aria-labelledby="line-copilot-messages-heading">
-            <div class="line-copilot-section-heading-row">
-              <h2 id="line-copilot-messages-heading" class="line-copilot-section-title">最近可見訊息</h2>
-              <span class="line-copilot-section-note">最多 5 則</span>
-            </div>
-            <ol id="line-copilot-message-list" class="line-copilot-message-list" aria-live="polite">
-              <li class="line-copilot-message-empty">偵測中</li>
-            </ol>
+            <div class="line-copilot-section-heading-row"><h2 id="line-copilot-messages-heading" class="line-copilot-section-title">最近可見訊息</h2><span class="line-copilot-section-note">最多 5 則</span></div>
+            <ol id="line-copilot-message-list" class="line-copilot-message-list" aria-live="polite"><li class="line-copilot-message-empty">偵測中</li></ol>
           </section>
-
           <button id="line-copilot-debug-toggle" class="line-copilot-secondary-button" type="button" aria-expanded="false" aria-controls="line-copilot-debug-panel">顯示偵錯資訊</button>
           <section id="line-copilot-debug-panel" class="line-copilot-debug-panel" hidden>
             <h2 class="line-copilot-section-title">偵錯資訊</h2>
             <dl class="line-copilot-detail-list">
-              <div class="line-copilot-detail-row"><dt class="line-copilot-detail-label">候選名稱元素</dt><dd id="line-copilot-debug-name-count" class="line-copilot-detail-value">0</dd></div>
-              <div class="line-copilot-detail-row"><dt class="line-copilot-detail-label">候選訊息元素</dt><dd id="line-copilot-debug-message-count" class="line-copilot-detail-value">0</dd></div>
+              <div class="line-copilot-detail-row"><dt class="line-copilot-detail-label">訊息串候選</dt><dd id="line-copilot-debug-stream-count" class="line-copilot-detail-value">0</dd></div>
+              <div class="line-copilot-detail-row"><dt class="line-copilot-detail-label">名稱候選</dt><dd id="line-copilot-debug-name-count" class="line-copilot-detail-value">0</dd></div>
+              <div class="line-copilot-detail-row"><dt class="line-copilot-detail-label">訊息候選</dt><dd id="line-copilot-debug-message-count" class="line-copilot-detail-value">0</dd></div>
+              <div class="line-copilot-detail-row line-copilot-detail-row-stacked"><dt class="line-copilot-detail-label">名稱選擇原因</dt><dd id="line-copilot-debug-selection-reason" class="line-copilot-detail-value">尚未偵測到</dd></div>
               <div class="line-copilot-detail-row line-copilot-detail-row-stacked"><dt class="line-copilot-detail-label">偵測策略</dt><dd id="line-copilot-debug-strategy" class="line-copilot-detail-value line-copilot-detail-mono">尚未偵測到</dd></div>
               <div class="line-copilot-detail-row line-copilot-detail-row-stacked"><dt class="line-copilot-detail-label">最近 DOM 更新</dt><dd id="line-copilot-debug-dom-time" class="line-copilot-detail-value">尚未偵測到</dd></div>
             </dl>
+            <h3 class="line-copilot-debug-heading">名稱候選與評分</h3><ol id="line-copilot-debug-name-candidates" class="line-copilot-debug-list"><li class="line-copilot-debug-empty">尚未偵測到</li></ol>
+            <h3 class="line-copilot-debug-heading">角色判斷依據</h3><ol id="line-copilot-debug-role-evidence" class="line-copilot-debug-list"><li class="line-copilot-debug-empty">尚未偵測到</li></ol>
+            <h3 class="line-copilot-debug-heading">已排除候選</h3><ol id="line-copilot-debug-excluded" class="line-copilot-debug-list"><li class="line-copilot-debug-empty">尚未偵測到</li></ol>
+            <button id="line-copilot-export-report" class="line-copilot-secondary-button" type="button">匯出偵測報告</button>
+            <p id="line-copilot-debug-export-result" class="line-copilot-debug-export-result" role="status" aria-live="polite"></p>
           </section>
-
           <button id="line-copilot-test-button" class="line-copilot-primary-button" type="button">測試功能</button>
           <p id="line-copilot-test-result" class="line-copilot-test-result" role="status" aria-live="polite"></p>
         </main>
-        <footer class="line-copilot-footer">
-          <p class="line-copilot-privacy">目前僅在瀏覽器本機偵測畫面內容，資料不會傳送到外部伺服器。</p>
-          <button id="line-copilot-close-button" class="line-copilot-secondary-button" type="button">關閉面板</button>
-          <span class="line-copilot-version">v1.1.0</span>
-        </footer>
+        <footer class="line-copilot-footer"><p class="line-copilot-privacy">目前僅在瀏覽器本機偵測畫面內容，資料不會傳送到外部伺服器。</p><button id="line-copilot-close-button" class="line-copilot-secondary-button" type="button">關閉面板</button><span class="line-copilot-version">v1.2.0</span></footer>
       </section>
     `;
 
-    root.querySelector("#line-copilot-collapse-button").addEventListener("click", () => {
-      lineCopilotSetCollapsed(root, true);
-    });
-    root.querySelector("#line-copilot-close-button").addEventListener("click", () => {
-      lineCopilotSetCollapsed(root, true);
-    });
-    root.querySelector("#line-copilot-expand-button").addEventListener("click", () => {
-      lineCopilotSetCollapsed(root, false);
-    });
-    root.querySelector("#line-copilot-test-button").addEventListener("click", () => {
-      lineCopilotSetText("line-copilot-test-result", "LINE COPILOT 測試成功");
-    });
+    root.querySelector("#line-copilot-collapse-button").addEventListener("click", () => lineCopilotSetCollapsed(root, true));
+    root.querySelector("#line-copilot-close-button").addEventListener("click", () => lineCopilotSetCollapsed(root, true));
+    root.querySelector("#line-copilot-expand-button").addEventListener("click", () => lineCopilotSetCollapsed(root, false));
+    root.querySelector("#line-copilot-test-button").addEventListener("click", () => lineCopilotSetText("line-copilot-test-result", "LINE COPILOT 測試成功"));
+    root.querySelector("#line-copilot-export-report").addEventListener("click", lineCopilotCopyDiagnosticReport);
     root.querySelector("#line-copilot-debug-toggle").addEventListener("click", (event) => {
-      const debugPanel = root.querySelector("#line-copilot-debug-panel");
+      const panel = root.querySelector("#line-copilot-debug-panel");
       const expanded = event.currentTarget.getAttribute("aria-expanded") === "true";
       event.currentTarget.setAttribute("aria-expanded", String(!expanded));
       event.currentTarget.textContent = expanded ? "顯示偵錯資訊" : "隱藏偵錯資訊";
-      debugPanel.hidden = expanded;
+      panel.hidden = expanded;
     });
-
     return root;
   }
 
   function lineCopilotEnsurePanel() {
     if (!document.body) return null;
-
     let root = document.getElementById(LINE_COPILOT_ROOT_ID);
     if (!root) {
       root = lineCopilotCreatePanel();
@@ -702,76 +1094,60 @@
   function lineCopilotRunDetection(reason) {
     lineCopilotRuntime.pendingReason = reason;
     if (!lineCopilotEnsurePanel()) return;
-    const state = detectChatState();
-    updateCopilotPanel(state);
+    updateCopilotPanel(detectChatState());
   }
 
   function lineCopilotScheduleDetection(reason) {
     lineCopilotRuntime.pendingReason = reason;
     window.clearTimeout(lineCopilotRuntime.debounceId);
-    lineCopilotRuntime.debounceId = window.setTimeout(() => {
-      lineCopilotRunDetection(lineCopilotRuntime.pendingReason);
-    }, LINE_COPILOT_DEBOUNCE_MS);
+    lineCopilotRuntime.debounceId = window.setTimeout(
+      () => lineCopilotRunDetection(lineCopilotRuntime.pendingReason),
+      LINE_COPILOT_DEBOUNCE_MS
+    );
   }
 
   function lineCopilotPatchHistory() {
     ["pushState", "replaceState"].forEach((methodName) => {
-      const originalMethod = window.history[methodName];
-      if (originalMethod.__lineCopilotPatched) return;
-
-      const patchedMethod = function (...args) {
-        const result = originalMethod.apply(this, args);
-        window.dispatchEvent(
-          new CustomEvent(LINE_COPILOT_NAVIGATION_EVENT, {
-            detail: { method: methodName }
-          })
-        );
+      const original = window.history[methodName];
+      if (original.__lineCopilotPatched) return;
+      const patched = function (...args) {
+        const result = original.apply(this, args);
+        window.dispatchEvent(new CustomEvent(LINE_COPILOT_NAVIGATION_EVENT));
         return result;
       };
-      Object.defineProperty(patchedMethod, "__lineCopilotPatched", {
-        value: true
-      });
-      window.history[methodName] = patchedMethod;
+      Object.defineProperty(patched, "__lineCopilotPatched", { value: true });
+      window.history[methodName] = patched;
     });
   }
 
   function observeLinePageChanges() {
     lineCopilotPatchHistory();
-
     const observer = new MutationObserver((mutations) => {
       const root = document.getElementById(LINE_COPILOT_ROOT_ID);
-      const hasExternalMutation = mutations.some((mutation) => {
-        if (root && root.contains(mutation.target)) return false;
-        return true;
-      });
-
-      if (!root) {
-        lineCopilotEnsurePanel();
-      }
-      if (hasExternalMutation) {
+      const external = mutations.some((mutation) => !(root && root.contains(mutation.target)));
+      if (!root) lineCopilotEnsurePanel();
+      if (external) {
         lineCopilotRuntime.lastDomUpdateAt = lineCopilotFormatTimestamp();
         lineCopilotScheduleDetection("dom-mutation");
       }
     });
-
     observer.observe(document.documentElement, {
       childList: true,
       subtree: true,
       characterData: true,
       attributes: true,
-      attributeFilter: ["class", "aria-selected", "title"]
+      attributeFilter: ["class", "aria-selected", "title", "data-direction"]
     });
 
-    const handleNavigation = () => {
+    const navigationHandler = () => {
       lineCopilotRuntime.lastUrl = window.location.href;
       lineCopilotScheduleDetection("navigation");
     };
-    window.addEventListener(LINE_COPILOT_NAVIGATION_EVENT, handleNavigation);
-    window.addEventListener("popstate", handleNavigation);
-    window.addEventListener("hashchange", handleNavigation);
-
+    window.addEventListener(LINE_COPILOT_NAVIGATION_EVENT, navigationHandler);
+    window.addEventListener("popstate", navigationHandler);
+    window.addEventListener("hashchange", navigationHandler);
     if (window.navigation?.addEventListener) {
-      window.navigation.addEventListener("navigate", handleNavigation);
+      window.navigation.addEventListener("navigate", navigationHandler);
     }
 
     const intervalId = window.setInterval(() => {
@@ -781,13 +1157,11 @@
         lineCopilotScheduleDetection("url-poll");
       }
     }, 1000);
-
     return { observer, intervalId };
   }
 
   lineCopilotEnsurePanel();
   lineCopilotRunDetection("initial-load");
-
   if (!window[LINE_COPILOT_MONITOR_KEY]) {
     window[LINE_COPILOT_MONITOR_KEY] = observeLinePageChanges();
   }
