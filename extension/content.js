@@ -458,7 +458,7 @@
     if (!text) return true;
     if (LINE_COPILOT_DATE_PATTERN.test(text) || LINE_COPILOT_TIME_PATTERN.test(text)) return true;
     if (/^\d+$/.test(text) || /https?:\/\//i.test(text)) return true;
-    return /^(今天|昨天|日期|時間|待處理|處理完畢|搜尋|搜索|自動回應訊息(?:功能執行中)?|使用手動聊天|預約傳送|已讀|未讀|傳送|LINE|LINE COPILOT)$/i.test(
+    return /^(今天|昨天|日期|時間|待處理|處理完畢|搜尋|搜索|自動回應訊息(?:功能執行中)?|使用手動聊天|預約傳送|已讀|未讀|傳送|進階方案|輕用量|OA Plus|Help|LINE|LINE COPILOT)$/i.test(
       text
     );
   }
@@ -563,7 +563,7 @@
       const areaRight = right.rect.width * right.rect.height;
       return areaLeft - areaRight || left.rect.left - right.rect.left;
     });
-    return { region, avatars, records: records.slice(0, 30) };
+    return { region, avatars, records: records.slice(0, 240), diagnosticRecords: records.slice(0, 30) };
   }
 
   function lineCopilotExtractSelectedListName(item, avatars) {
@@ -681,16 +681,29 @@
           const style = window.getComputedStyle(element);
           const fontSize = Number.parseFloat(style.fontSize || "0");
           const signal = lineCopilotGetSignal(element);
+          const avatarDistance = diagnostic.avatarDistance;
+          const streamGap =
+            headerScan.region.streamTop === null
+              ? null
+              : Math.round(headerScan.region.streamTop - rect.bottom);
+          const isNearAvatar = avatarDistance !== null && avatarDistance <= 180;
+          const isNearStreamTop = streamGap !== null && streamGap >= -30 && streamGap <= 80;
+          const hasNameSemantics = /(name|title|contact|profile|user|friend|member)/.test(signal);
+          if (!isNearAvatar && !isNearStreamTop && !hasNameSemantics) return;
           const evidence = ["位於中央聊天室頂部診斷區域"];
           let score = 32;
           if (headerScan.region.streamTop !== null && rect.bottom <= headerScan.region.streamTop + 20) {
             score += 24;
             evidence.push("位於訊息列表上方");
           }
-          if (diagnostic.avatarDistance !== null && diagnostic.avatarDistance <= 180) {
+          if (isNearAvatar) {
             score += 32;
-            evidence.push(`鄰近圓形頭像 ${diagnostic.avatarDistance}px`);
-            if (diagnostic.avatarDistance <= 90) score += 12;
+            evidence.push(`鄰近圓形頭像 ${avatarDistance}px`);
+            if (avatarDistance <= 90) score += 12;
+          }
+          if (isNearStreamTop) {
+            score += streamGap <= 45 ? 22 : 10;
+            evidence.push(`距離訊息串上緣 ${streamGap}px`);
           }
           if (fontSize >= 18) {
             score += 18;
@@ -703,7 +716,7 @@
             score += 18;
             evidence.push("具 heading 語意");
           }
-          if (/(name|title|contact|profile|user|friend|member)/.test(signal)) {
+          if (hasNameSemantics) {
             score += 16;
             evidence.push("具名稱語意");
           }
@@ -739,7 +752,7 @@
             strategy: headerSelected.source,
             candidateCount: candidates.length,
             candidates: candidates.slice(0, 20),
-            headerCandidates: headerScan.records.map((record) => record.diagnostic),
+            headerCandidates: headerScan.diagnosticRecords.map((record) => record.diagnostic),
             selectionReason: `選擇 ${headerSelected.source} 最高分 ${headerSelected.score}：${headerSelected.evidence.join("；")}`
           };
         }
@@ -759,7 +772,7 @@
             strategy: listFallback.source,
             candidateCount: candidates.length,
             candidates: candidates.slice(0, 20),
-            headerCandidates: headerScan.records.map((record) => record.diagnostic),
+            headerCandidates: headerScan.diagnosticRecords.map((record) => record.diagnostic),
             selectionReason: `Header 未達門檻，使用左側選中聊天室項目（${listFallback.score} 分）`
           };
         }
@@ -771,7 +784,7 @@
           strategy: "unknown",
           candidateCount: candidates.length,
           candidates: candidates.slice(0, 20),
-          headerCandidates: headerScan.records.map((record) => record.diagnostic),
+          headerCandidates: headerScan.diagnosticRecords.map((record) => record.diagnostic),
           selectionReason: "Header 與左側選中聊天室項目皆無可靠名稱，寧可不猜測"
         };
       },
