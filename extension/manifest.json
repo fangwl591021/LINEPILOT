@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "LINE COPILOT",
-  "version": "1.0.0",
-  "description": "在 LINE Official Account Manager 顯示 LINE COPILOT 驗證面板。",
+  "version": "1.1.0",
+  "description": "在 LINE Official Account Manager 本機偵測目前聊天室與可見訊息。",
   "background": {
     "service_worker": "background.js"
   },

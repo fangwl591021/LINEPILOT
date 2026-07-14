@@ -45,13 +45,23 @@
         font-size: 12px;
       }
 
+      .line-copilot-popup-message,
+      .line-copilot-popup-privacy {
+        color: #344050;
+        font-size: 13px;
+        line-height: 1.6;
+      }
+
       .line-copilot-popup-message {
         margin: 18px 0 0;
         padding-top: 16px;
         border-top: 1px solid #e3e7eb;
-        color: #344050;
-        font-size: 13px;
-        line-height: 1.6;
+      }
+
+      .line-copilot-popup-privacy {
+        margin: 10px 0 0;
+        color: #687581;
+        font-size: 11px;
       }
     </style>
   </head>
@@ -60,10 +70,11 @@
       <span class="line-copilot-popup-mark" aria-hidden="true">LC</span>
       <div class="line-copilot-popup-copy">
         <h1 class="line-copilot-popup-title">LINE COPILOT</h1>
-        <p class="line-copilot-popup-version">版本 <span id="line-copilot-popup-version">1.0.0</span></p>
+        <p class="line-copilot-popup-version">版本 <span id="line-copilot-popup-version">1.1.0</span></p>
       </div>
     </div>
-    <p class="line-copilot-popup-message">請開啟 LINE Official Account Manager 使用 LINE COPILOT。</p>
+    <p class="line-copilot-popup-message">請開啟 LINE Official Account Manager 或聊天室使用 LINE COPILOT。</p>
+    <p class="line-copilot-popup-privacy">v1.1 僅在瀏覽器本機偵測目前畫面，不會傳送或儲存資料。</p>
     <script src="popup.js"></script>
   </body>
 </html>
