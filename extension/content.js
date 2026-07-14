@@ -245,7 +245,7 @@
           const rect = element.getBoundingClientRect();
           if (
             rect.left < Math.max(220, usableRight * 0.2) ||
-            rect.right > usableRight + 2 ||
+            Math.min(rect.right, usableRight) - rect.left < 260 ||
             rect.top < 70 ||
             rect.width < 260 ||
             rect.height < 140
@@ -302,7 +302,7 @@
               const rect = element.getBoundingClientRect();
               if (
                 rect.left < Math.max(220, usableRight * 0.24) ||
-                rect.right > usableRight + 2 ||
+                Math.min(rect.right, usableRight) - rect.left < 300 ||
                 rect.top < 90 ||
                 rect.top > 420 ||
                 rect.width < 300 ||
@@ -376,7 +376,7 @@
         rect.top < 45 ||
         rect.top > 260 ||
         rect.left < Math.max(220, usableRight * 0.2) ||
-        rect.right > usableRight + 2 ||
+        Math.min(rect.right, usableRight) - rect.left < 150 ||
         rect.width < 150
       ) {
         return;
@@ -1418,6 +1418,7 @@
     lineCopilotRenderHeaderCandidates(state.headerCandidateElements);
     lineCopilotRenderExcludedCandidates(state.excludedCandidates);
     lineCopilotRenderRoleDiagnostics(state.messages);
+    globalThis.LINE_COPILOT_AI?.updateChatState?.(state);
   }
 
   function lineCopilotBuildDiagnosticReport(state) {
@@ -1513,7 +1514,7 @@
         <header class="line-copilot-header">
           <div class="line-copilot-heading-group">
             <span class="line-copilot-brand-mark" aria-hidden="true">LC</span>
-            <div class="line-copilot-heading-copy"><h1 class="line-copilot-title">LINE COPILOT</h1><span class="line-copilot-subtitle">精準聊天室偵測</span></div>
+            <div class="line-copilot-heading-copy"><h1 class="line-copilot-title">LINE COPILOT</h1><span class="line-copilot-subtitle">AI 建議回覆</span></div>
           </div>
           <button id="line-copilot-collapse-button" class="line-copilot-icon-button" type="button" aria-label="收合 LINE COPILOT 面板" title="收合面板">›</button>
         </header>
@@ -1536,6 +1537,7 @@
             <div class="line-copilot-section-heading-row"><h2 id="line-copilot-messages-heading" class="line-copilot-section-title">最近可見訊息</h2><span class="line-copilot-section-note">最多 5 則</span></div>
             <ol id="line-copilot-message-list" class="line-copilot-message-list" aria-live="polite"><li class="line-copilot-message-empty">偵測中</li></ol>
           </section>
+          ${globalThis.LINE_COPILOT_AI?.createSectionMarkup?.() || ""}
           <button id="line-copilot-debug-toggle" class="line-copilot-secondary-button" type="button" aria-expanded="false" aria-controls="line-copilot-debug-panel">顯示偵錯資訊</button>
           <section id="line-copilot-debug-panel" class="line-copilot-debug-panel" hidden>
             <h2 class="line-copilot-section-title">偵錯資訊</h2>
@@ -1559,7 +1561,7 @@
           <button id="line-copilot-test-button" class="line-copilot-primary-button" type="button">測試功能</button>
           <p id="line-copilot-test-result" class="line-copilot-test-result" role="status" aria-live="polite"></p>
         </main>
-        <footer class="line-copilot-footer"><p class="line-copilot-privacy">目前僅在瀏覽器本機偵測畫面內容，資料不會傳送到外部伺服器。</p><button id="line-copilot-close-button" class="line-copilot-secondary-button" type="button">關閉面板</button><span class="line-copilot-version">v1.2.0</span></footer>
+        <footer class="line-copilot-footer"><p class="line-copilot-privacy">MLM 知識庫會下載到瀏覽器本機比對，問題與對話內容不會上傳。</p><button id="line-copilot-close-button" class="line-copilot-secondary-button" type="button">關閉面板</button><span class="line-copilot-version">v1.3.1</span></footer>
       </section>
     `;
 
@@ -1576,6 +1578,7 @@
       event.currentTarget.textContent = expanded ? "顯示偵錯資訊" : "隱藏偵錯資訊";
       panel.hidden = expanded;
     });
+    globalThis.LINE_COPILOT_AI?.init?.(root, () => lineCopilotRuntime.latestState);
     return root;
   }
 
