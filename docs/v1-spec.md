@@ -1,203 +1,135 @@
-# LINE COPILOT v1.3.1 規格
+# LINE COPILOT v1.4 規格
 
 ## 產品定位
 
-LINE COPILOT 是 LINE Official Account Manager 的人工客服輔助面板。v1.3 將已偵測的聊天室資訊與客服手動輸入的問題組合成一次性 API Request，顯示後端產生的建議回覆，由客服人工確認與複製。
+LINE COPILOT 是 LINE OA 人工客服的右側操作面板。v1.4 專注 UI、UX 與資訊層級，讓主要客服工作在第一屏完成，技術診斷按需展開。
 
-它不是 LINE 訊息發送器，也不是自動回覆機器人。
+## 目標
 
-## v1.3 目標
+- 客服在 3 秒內知道目前客戶、最近問題與主要 CTA。
+- AI 建議回覆成為主功能。
+- 技術資訊退出主畫面。
+- 保留 v1.2 聊天偵測、v1.3 API Client、MLM 本機知識模式與 Mock 測試流程。
+- 不改變 LINE OA，不自動發送。
 
-- 建立可替換後端的統一 API Client。
-- 預設從 MLM Repository 下載公開知識庫並在瀏覽器本機比對。
-- 保留 Mock API 與正式後端 API 路徑。
-- 讓客服明確控制是否帶入最近可見訊息。
-- 僅在主動點擊後傳送必要資料。
-- 為未來登入、額度、方案與知識庫保留狀態結構。
+## 面板資訊架構
+
+1. Header：LINE COPILOT／AI 客服助手／收合。
+2. 客戶摘要：名稱、狀態、最近客戶訊息、上下文數量。
+3. 快速操作：六個 pill buttons，只填入需求。
+4. AI 建議輸入：2000 字、context checkbox、對話預覽、主要 CTA。
+5. 結果卡片：建議、時間、上下文、複製與調整。
+6. 客戶與聊天室資訊：預設收合。
+7. 開發與偵錯資訊：預設收合。
+8. Footer：隱私、開發入口、版本。
 
 ## 模組責任
 
-### `config.js`
+### `copilot-panel.js`
 
-集中管理 `USE_MLM_KNOWLEDGE`、`MLM_KNOWLEDGE_URL`、`API_BASE_URL`、`USE_MOCK_API`、`REQUEST_TIMEOUT_MS`、`MAX_VISIBLE_MESSAGES`。不得存放 API Key。
-
-### `api-client.js`
-
-- `requestAiSuggestion(payload, options)`
-- MLM 知識庫本機檢索與建議組合
-- Mock response
-- 正式 API 的 `fetch` 與 JSON request
-- 30 秒 timeout
-- `AbortController`
-- HTTP 與網路錯誤轉換
-- Response schema 基本驗證
+- 建立 Header、客戶摘要、快速操作容器、折疊資訊與精簡 footer。
+- 更新摘要與聊天室資訊。
+- 管理收合／展開、隱私提示及偵錯入口。
 
 ### `ai-suggestion.js`
 
-- AI 區塊 markup 與事件
-- 問題驗證及字數顯示
-- 上下文選擇與預覽
-- Payload 組合
-- loading、error、result
-- 重新產生、清除與複製 fallback
-- v1.3 狀態容器
+- 問題驗證與剩餘字數。
+- 快速指令填入。
+- 對話選擇與一般預覽。
+- loading、可關閉錯誤、空白狀態。
+- 產生、複製、重新產生、更親切、更簡短、清除。
+- 切換聊天室時清除舊結果但保留未送出輸入。
+- 將 request／response 技術資料寫入偵錯區。
 
 ### `content.js`
 
-保留 v1.2 聊天偵測與面板生命週期，將最新聊天狀態交給 AI 模組；不負責 API 細節。
+- 保留聊天對象與可見訊息偵測。
+- 更新候選、排除與角色診斷資料。
+- 協調 `LINE_COPILOT_PANEL` 與 `LINE_COPILOT_AI`。
+- 不再包含整份面板 HTML。
 
-## 狀態
+### `api-client.js`
 
-```js
-const copilotState = {
-  auth: {
-    loggedIn: false,
-    plan: "free"
-  },
-  usage: {
-    remaining: null
-  },
-  currentChat: {},
-  aiRequest: {
-    loading: false,
-    lastRequestId: null
-  }
-};
-```
+- 保留 MLM 本機知識檢索、Mock fallback 與正式 API Client。
+- timeout、AbortController、HTTP／JSON／網路錯誤處理。
 
-v1.3 不實作登入、額度或付費解鎖。
+## 快速操作
 
-## 上下文規則
+快捷指令只更新 textarea，不呼叫 API。loading 期間全部停用。最近一次選擇以 active pill 顯示，面板收合不會清除。
 
-1. 使用 v1.2 已清理的可見文字訊息。
-2. 空白訊息不使用。
-3. 最多取最後 5 則。
-4. 優先使用 high／medium confidence。
-5. 只有完全沒有 high／medium 時才使用 low confidence。
-6. 使用者取消 checkbox 時傳送空陣列。
-7. 預覽不觸發 API，不會在背景上傳。
+## 結果調整
 
-訊息格式：
+- 更親切：原需求後加入「請將剛才的建議調整得更親切自然。」
+- 更簡短：原需求後加入「請將剛才的建議縮短，保留最重要資訊。」
 
-```json
-{
-  "text": "string",
-  "role": "customer | operator | system | unknown",
-  "time": "string | null",
-  "confidence": "high | medium | low"
-}
-```
+兩者均再次呼叫 `requestAiSuggestion`，仍不會寫入或送出 LINE 訊息。
 
-## API Contract
+## 聊天室切換狀態
 
-Endpoint：`POST {API_BASE_URL}/api/copilot/suggest`
+聊天室 identity 依 conversation ID、contact name 或 URL 建立。identity 改變且已有結果時：
 
-Request：
+1. Abort 尚未完成的舊 request。
+2. 清除舊 result、requestId 與 mode badge。
+3. 保留 textarea、checkbox 偏好、快捷指令與 details open state。
+4. 顯示重新產生提示。
 
-```json
-{
-  "question": "string",
-  "contactName": "string | null",
-  "conversationId": "string | null",
-  "currentUrl": "string",
-  "visibleMessages": [],
-  "source": "chrome-extension",
-  "extensionVersion": "1.3.1",
-  "instructions": {
-    "language": "zh-TW",
-    "replyMode": "suggestion-only",
-    "mustBeReviewedByHuman": true,
-    "doNotAutoSend": true
-  }
-}
-```
+## 無聊天室狀態
 
-成功 Response：
+- `isOpen = false`。
+- context checkbox disabled 且不帶入訊息。
+- payload 的 `contactName`、`conversationId` 為 `null`。
+- `visibleMessages` 為 `[]`。
+- 手動問題仍能產生建議。
 
-```json
-{
-  "success": true,
-  "suggestion": "string",
-  "requestId": "string",
-  "model": "string",
-  "createdAt": "ISO-8601 datetime",
-  "usage": {
-    "inputTokens": 0,
-    "outputTokens": 0
-  }
-}
-```
+## 技術資訊位置
 
-失敗 Response：
+聊天室 ID、完整網址、偵測來源、confidence、候選元素、排除原因、payload、response metadata、requestId、model、usage 與 Mock 狀態只存在於兩個預設收合區，不顯示在客戶摘要或結果主內容。
 
-```json
-{
-  "success": false,
-  "error": {
-    "code": "string",
-    "message": "string"
-  }
-}
-```
+## 視覺規格
 
-## 錯誤顯示
-
-| 條件 | 使用者訊息 |
-|---|---|
-| 空白問題 | 請先輸入問題 |
-| 未設定 API | 尚未設定 LINE COPILOT API |
-| 網路失敗 | 無法連線到 LINE COPILOT 服務，請檢查網路後再試一次 |
-| Timeout | AI 回覆逾時，請稍後再試 |
-| 401 | 登入狀態已失效，請重新登入 |
-| 403 | 目前帳號沒有使用此功能的權限 |
-| 429 | 今日使用次數已達上限 |
-| 500+ | LINE COPILOT 服務暫時異常，請稍後再試 |
-| 空 suggestion | AI 沒有產生可用的建議，請重新嘗試 |
-| 複製失敗 | 選取建議文字，提示使用者按 Ctrl+C |
+- 面板寬度 400px。
+- Header 與 footer 固定，中間內容獨立捲動。
+- 卡片白底、淡灰框、14px 圓角。
+- LINE 綠只用於主要 CTA、狀態與選取提示。
+- 結果最大高度 300px，超出內捲動。
+- 所有 selector 使用 `line-copilot-` 前綴，沒有全域 element selector。
 
 ## 安全邊界
 
-- 不讀取 Cookie、localStorage、Authorization Header 或 LINE Token。
-- 不攔截 LINE OA requests。
-- 不呼叫 LINE Messaging API、Push API、Reply API。
-- 不修改原生聊天輸入框，不自動點擊。
-- 不保存完整聊天紀錄。
-- 不在 Console 輸出 payload 或對話全文。
-- MLM 模式只下載公開知識庫，不上傳問題或聊天內容。
-- Mock fallback 不執行外部 `fetch`。
-- 正式模式只能配置自有後端來源，Manifest 不使用 `<all_urls>`。
-- AI 建議必須由人工確認與手動貼上。
+- 不讀 Cookie、Token、localStorage 或 Authorization Header。
+- 不使用 Chrome Storage。
+- 不攔截 LINE OA request。
+- 不呼叫 Messaging、Push 或 Reply API。
+- 不修改原生輸入框、不自動點擊、不自動發送。
+- 不在一般畫面或 Console 顯示完整 request 技術資料。
 
 ## Manifest
 
 - `manifest_version`: 3
-- `version`: 1.3.1
-- Script order：`config.js`、`api-client.js`、`ai-suggestion.js`、`content.js`
-- `host_permissions` 僅允許 MLM Repository 的 raw content 精確來源
-- 不要求 `tabs`、`cookies`、`webRequest` 或 storage 權限
+- `version`: 1.4.0
+- Script order：`config.js`、`api-client.js`、`ai-suggestion.js`、`copilot-panel.js`、`content.js`
+- 僅保留 MLM raw knowledge 所需 host permission。
 
-## 測試方式
+## 測試
 
-詳細案例見 [v1.3-test-checklist.md](v1.3-test-checklist.md)。自動 fixture 驗證 Mock 工作流程、上下文開關、重複請求防護、複製、清除、重新產生、聊天室切換、未開啟聊天室、HTTP 錯誤、timeout 與不自動操作 LINE UI。
+自動測試覆蓋第一屏、快捷指令、Mock 結果、複製、兩種結果調整、清除、切換聊天室、無聊天室、狀態保持、折疊資訊、長結果捲動、單一面板與 LINE 原生 UI 不受影響。
+
+人工清單見 [v1.4-test-checklist.md](v1.4-test-checklist.md)。
 
 ## 已知限制
 
-- 正式生成式 AI API 尚未配置；目前是 MLM 知識庫檢索式建議。
-- GitHub 或 MLM Repository 無法連線時，知識庫模式會顯示載入失敗。
-- LINE OA DOM 更新可能影響聊天室偵測。
-- 只帶入目前已渲染且可見的文字訊息。
+- 正式生成式 AI API 尚未配置。
+- MLM 模式是本機檢索，不是語意向量搜尋。
+- LINE OA DOM 變更可能需要更新 detector。
 - 不支援手機版。
-- API instructions 由後端決定是否採用；Extension 不內嵌完整 system prompt。
 
-## 不包含功能
+## 操作截圖
 
-- 登入、付費方案、免費額度
-- 工作空間、企業知識庫、CRM
-- RAG
-- 自動回覆、自動傳送 LINE 訊息
+> 預留：v1.4 第一屏與建議結果卡片。
 
 ## 下一版本
 
-- v1.4：登入與帳號綁定
-- v1.5：免費額度與方案權限
-- v2.0：企業知識庫與 AI RAG
+- 自有後端 RAG／AI 建議。
+- 登入、權限與使用額度。
+- 可管理的企業知識庫。
+- 回覆品質回饋與人工採用紀錄。

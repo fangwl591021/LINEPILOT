@@ -1418,6 +1418,7 @@
     lineCopilotRenderHeaderCandidates(state.headerCandidateElements);
     lineCopilotRenderExcludedCandidates(state.excludedCandidates);
     lineCopilotRenderRoleDiagnostics(state.messages);
+    globalThis.LINE_COPILOT_PANEL?.updateChatState?.(document.getElementById(LINE_COPILOT_ROOT_ID), state);
     globalThis.LINE_COPILOT_AI?.updateChatState?.(state);
   }
 
@@ -1497,86 +1498,12 @@
     }
   }
 
-  function lineCopilotSetCollapsed(root, collapsed) {
-    root.classList.toggle(LINE_COPILOT_COLLAPSED_CLASS, collapsed);
-    root.setAttribute("aria-expanded", String(!collapsed));
-  }
-
   function lineCopilotCreatePanel() {
-    const root = document.createElement("aside");
-    root.id = LINE_COPILOT_ROOT_ID;
-    root.className = "line-copilot-root";
-    root.setAttribute("aria-label", "LINE COPILOT 面板");
-    root.setAttribute("aria-expanded", "true");
-    root.innerHTML = `
-      <button id="line-copilot-expand-button" class="line-copilot-expand-button" type="button" aria-label="展開 LINE COPILOT 面板" title="展開 LINE COPILOT">LC</button>
-      <section class="line-copilot-panel">
-        <header class="line-copilot-header">
-          <div class="line-copilot-heading-group">
-            <span class="line-copilot-brand-mark" aria-hidden="true">LC</span>
-            <div class="line-copilot-heading-copy"><h1 class="line-copilot-title">LINE COPILOT</h1><span class="line-copilot-subtitle">AI 建議回覆</span></div>
-          </div>
-          <button id="line-copilot-collapse-button" class="line-copilot-icon-button" type="button" aria-label="收合 LINE COPILOT 面板" title="收合面板">›</button>
-        </header>
-        <main class="line-copilot-content">
-          <div id="line-copilot-status-card" class="line-copilot-status-card"><span class="line-copilot-status-dot" aria-hidden="true"></span><span id="line-copilot-status-text" class="line-copilot-status-text">偵測中</span></div>
-          <section class="line-copilot-detector-section" aria-labelledby="line-copilot-chat-heading">
-            <h2 id="line-copilot-chat-heading" class="line-copilot-section-title">目前聊天室</h2>
-            <dl class="line-copilot-detail-list">
-              <div class="line-copilot-detail-row"><dt class="line-copilot-detail-label">已開啟</dt><dd id="line-copilot-chat-open" class="line-copilot-detail-value">偵測中</dd></div>
-              <div class="line-copilot-detail-row"><dt class="line-copilot-detail-label">聊天對象</dt><dd id="line-copilot-contact-name" class="line-copilot-detail-value">偵測中</dd></div>
-              <div class="line-copilot-detail-row"><dt class="line-copilot-detail-label">偵測來源</dt><dd id="line-copilot-contact-source" class="line-copilot-detail-value line-copilot-detail-mono">unknown</dd></div>
-              <div class="line-copilot-detail-row"><dt class="line-copilot-detail-label">信心程度</dt><dd id="line-copilot-contact-confidence" class="line-copilot-detail-value">low</dd></div>
-              <div class="line-copilot-detail-row line-copilot-detail-row-stacked"><dt class="line-copilot-detail-label">最後成功偵測時間</dt><dd id="line-copilot-contact-success-time" class="line-copilot-detail-value">尚未偵測到</dd></div>
-              <div class="line-copilot-detail-row"><dt class="line-copilot-detail-label">聊天室 ID</dt><dd id="line-copilot-conversation-id" class="line-copilot-detail-value line-copilot-detail-mono">偵測中</dd></div>
-              <div class="line-copilot-detail-row line-copilot-detail-row-stacked"><dt class="line-copilot-detail-label">目前網址</dt><dd id="line-copilot-current-url" class="line-copilot-detail-value line-copilot-detail-mono">偵測中</dd></div>
-              <div class="line-copilot-detail-row line-copilot-detail-row-stacked"><dt class="line-copilot-detail-label">最後偵測時間</dt><dd id="line-copilot-detected-at" class="line-copilot-detail-value">偵測中</dd></div>
-            </dl>
-          </section>
-          <section class="line-copilot-detector-section" aria-labelledby="line-copilot-messages-heading">
-            <div class="line-copilot-section-heading-row"><h2 id="line-copilot-messages-heading" class="line-copilot-section-title">最近可見訊息</h2><span class="line-copilot-section-note">最多 5 則</span></div>
-            <ol id="line-copilot-message-list" class="line-copilot-message-list" aria-live="polite"><li class="line-copilot-message-empty">偵測中</li></ol>
-          </section>
-          ${globalThis.LINE_COPILOT_AI?.createSectionMarkup?.() || ""}
-          <button id="line-copilot-debug-toggle" class="line-copilot-secondary-button" type="button" aria-expanded="false" aria-controls="line-copilot-debug-panel">顯示偵錯資訊</button>
-          <section id="line-copilot-debug-panel" class="line-copilot-debug-panel" hidden>
-            <h2 class="line-copilot-section-title">偵錯資訊</h2>
-            <dl class="line-copilot-detail-list">
-              <div class="line-copilot-detail-row"><dt class="line-copilot-detail-label">訊息串候選</dt><dd id="line-copilot-debug-stream-count" class="line-copilot-detail-value">0</dd></div>
-              <div class="line-copilot-detail-row"><dt class="line-copilot-detail-label">名稱候選</dt><dd id="line-copilot-debug-name-count" class="line-copilot-detail-value">0</dd></div>
-              <div class="line-copilot-detail-row"><dt class="line-copilot-detail-label">訊息候選</dt><dd id="line-copilot-debug-message-count" class="line-copilot-detail-value">0</dd></div>
-              <div class="line-copilot-detail-row line-copilot-detail-row-stacked"><dt class="line-copilot-detail-label">名稱選擇原因</dt><dd id="line-copilot-debug-selection-reason" class="line-copilot-detail-value">尚未偵測到</dd></div>
-              <div class="line-copilot-detail-row line-copilot-detail-row-stacked"><dt class="line-copilot-detail-label">偵測策略</dt><dd id="line-copilot-debug-strategy" class="line-copilot-detail-value line-copilot-detail-mono">尚未偵測到</dd></div>
-              <div class="line-copilot-detail-row line-copilot-detail-row-stacked"><dt class="line-copilot-detail-label">最近 DOM 更新</dt><dd id="line-copilot-debug-dom-time" class="line-copilot-detail-value">尚未偵測到</dd></div>
-            </dl>
-            <h3 class="line-copilot-debug-heading">聊天室 Header 候選元素</h3><ol id="line-copilot-debug-header-candidates" class="line-copilot-debug-list"><li class="line-copilot-debug-empty">尚未偵測到</li></ol>
-            <button id="line-copilot-copy-header-report" class="line-copilot-secondary-button" type="button">複製 Header 診斷 JSON</button>
-            <p id="line-copilot-header-export-result" class="line-copilot-debug-export-result" role="status" aria-live="polite"></p>
-            <h3 class="line-copilot-debug-heading">名稱候選與評分</h3><ol id="line-copilot-debug-name-candidates" class="line-copilot-debug-list"><li class="line-copilot-debug-empty">尚未偵測到</li></ol>
-            <h3 class="line-copilot-debug-heading">角色判斷依據</h3><ol id="line-copilot-debug-role-evidence" class="line-copilot-debug-list"><li class="line-copilot-debug-empty">尚未偵測到</li></ol>
-            <h3 class="line-copilot-debug-heading">已排除候選</h3><ol id="line-copilot-debug-excluded" class="line-copilot-debug-list"><li class="line-copilot-debug-empty">尚未偵測到</li></ol>
-            <button id="line-copilot-export-report" class="line-copilot-secondary-button" type="button">匯出偵測報告</button>
-            <p id="line-copilot-debug-export-result" class="line-copilot-debug-export-result" role="status" aria-live="polite"></p>
-          </section>
-          <button id="line-copilot-test-button" class="line-copilot-primary-button" type="button">測試功能</button>
-          <p id="line-copilot-test-result" class="line-copilot-test-result" role="status" aria-live="polite"></p>
-        </main>
-        <footer class="line-copilot-footer"><p class="line-copilot-privacy">MLM 知識庫會下載到瀏覽器本機比對，問題與對話內容不會上傳。</p><button id="line-copilot-close-button" class="line-copilot-secondary-button" type="button">關閉面板</button><span class="line-copilot-version">v1.3.1</span></footer>
-      </section>
-    `;
-
-    root.querySelector("#line-copilot-collapse-button").addEventListener("click", () => lineCopilotSetCollapsed(root, true));
-    root.querySelector("#line-copilot-close-button").addEventListener("click", () => lineCopilotSetCollapsed(root, true));
-    root.querySelector("#line-copilot-expand-button").addEventListener("click", () => lineCopilotSetCollapsed(root, false));
-    root.querySelector("#line-copilot-test-button").addEventListener("click", () => lineCopilotSetText("line-copilot-test-result", "LINE COPILOT 測試成功"));
-    root.querySelector("#line-copilot-export-report").addEventListener("click", lineCopilotCopyDiagnosticReport);
-    root.querySelector("#line-copilot-copy-header-report").addEventListener("click", lineCopilotCopyHeaderDiagnosticReport);
-    root.querySelector("#line-copilot-debug-toggle").addEventListener("click", (event) => {
-      const panel = root.querySelector("#line-copilot-debug-panel");
-      const expanded = event.currentTarget.getAttribute("aria-expanded") === "true";
-      event.currentTarget.setAttribute("aria-expanded", String(!expanded));
-      event.currentTarget.textContent = expanded ? "顯示偵錯資訊" : "隱藏偵錯資訊";
-      panel.hidden = expanded;
+    const root = globalThis.LINE_COPILOT_PANEL?.createPanelElement?.();
+    if (!root) throw new Error("LINE COPILOT panel module is unavailable");
+    globalThis.LINE_COPILOT_PANEL.init(root, {
+      copyDiagnosticReport: lineCopilotCopyDiagnosticReport,
+      copyHeaderReport: lineCopilotCopyHeaderDiagnosticReport
     });
     globalThis.LINE_COPILOT_AI?.init?.(root, () => lineCopilotRuntime.latestState);
     return root;
