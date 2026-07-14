@@ -1,114 +1,122 @@
-# LINE COPILOT v1.1 規格
+# LINE COPILOT v1.2 規格
 
 ## 產品定位
 
-LINE COPILOT 是顯示於 LINE Official Account Manager 右側的瀏覽器輔助面板。v1.1「聊天室偵測器」只在使用者瀏覽器本機辨識目前聊天室及畫面上已存在的文字內容，作為後續功能研究的安全基礎。
+LINE COPILOT 是 LINE Official Account Manager 的本機輔助面板。v1.2 先把可見聊天室資料整理成乾淨、可診斷且保守的結構，作為未來人工提問與 AI 建議回覆的基礎；本版本沒有任何 AI 或傳送功能。
 
-## v1.1 開發目標
+## v1.2 開發目標
 
-- 在 `https://manager.line.biz/*` 與 `https://chat.line.biz/*` 維持單一 LINE COPILOT 面板。
-- 偵測目前是否已開啟聊天室及可從頁面取得的基本資料。
-- 讀取目前畫面可見的最近 5 則文字訊息，不捲動、不載入更多歷史內容。
-- 面對 SPA 導航及 DOM 重新渲染時，以 debounce 更新結果並避免無限迴圈。
-- 讓 selector 與判斷策略可透過偵錯模式觀察及後續調整。
+1. 不再把「今天」等日期或操作文字誤認為聊天對象。
+2. 不把 Rich Menu、圖文選單、卡片按鈕或圖片內容誤認為文字訊息。
+3. 不預設所有訊息都是客戶；證據不足時輸出 `unknown`。
+4. 提供可檢查的候選評分、排除原因、角色依據與本機診斷報告。
 
-## 本版本包含功能
+## 聊天對象名稱策略
 
-### 聊天室狀態
+偵測器優先定位中央訊息串，再在訊息串上方、水平重疊的聊天室 header 中尋找名稱。若 LINE 的實際 DOM 沒有可辨識的 header 或 message class，名稱偵測仍可獨立以中央頂部位置、字型、父層排列及左側頭像距離評分，不會因訊息串尚未定位而直接失敗。
 
-- 是否已開啟聊天室。
-- 聊天對象顯示名稱；找不到時顯示「尚未偵測到」。
-- 目前頁面網址。
-- 從 `chat.line.biz` 路徑或已知 query parameter 解析的聊天室識別碼。
-- 最後偵測時間。
+候選必須是單行、合理長度、不是網址，也不能完全由數字、日期或時間組成。`今天`、`昨天`、`待處理`、`處理完畢`、`搜尋`、`使用手動聊天`、`自動回應訊息` 等會直接排除。
 
-### 可見訊息偵測
+通過基本規則後，依以下線索加權：
 
-- 最多顯示畫面中最近 5 則可見文字訊息。
-- 顯示可取得的時間；找不到時顯示「尚未偵測到」。
-- 優先依 DOM 的 incoming／outgoing、sender 等屬性訊號判斷客戶或客服。
-- 屬性不足時才使用訊息在聊天區域的左右位置推測角色。
-- 無法可靠判斷時標記為 `unknown`。
+- 位於選定的聊天室 header。
+- heading、name/profile/chat/contact 等語意。
+- 字型大小與粗細符合標題。
+- 與圓形頭像在同一列且距離接近。
+- 與訊息串水平位置一致。
 
-### SPA 監聽
+偵錯模式會顯示每個候選名稱、分數、證據與最終選擇原因。最高分未達門檻時顯示「尚未偵測到」。
 
-- 包裝目前 isolated world 的 `history.pushState` 與 `history.replaceState`。
-- 監聽 `popstate`、`hashchange` 及可用時的 Navigation API。
-- 每秒比對一次 URL，補足頁面主世界 History API 可能無法被 isolated world 包裝攔截的情況。
-- 使用 MutationObserver 監聽外部 DOM 的 child、文字及有限屬性變化。
-- 忽略 LINE COPILOT 面板內自身更新，並使用 500ms debounce 避免過度掃描。
+## 真正文字訊息與排除規則
 
-### 偵錯模式
+偵測器先以 `role=log/list`、message-list/conversation/timeline 等語意及共同訊息父層評分，選出單一訊息串。若實際頁面只使用無語意的雜湊 class，則以中央位置、可捲動／裁切特徵及可見時間文字定位訊息區。仍會要求訊息具有獨立結構；fallback 只接受有背景圓角、左右排列或 message/bubble 結構證據的視覺泡泡。
 
-- 候選名稱元素數量。
-- 候選訊息元素數量。
-- 目前使用中的 URL、名稱、訊息偵測策略名稱。
-- 最近一次外部 DOM 更新時間。
+擷取時優先讀取候選內的獨立文字節點；不使用整頁最短文字或任意葉節點 fallback。以下候選會排除並記錄原因：
 
-## 偵測策略
+- `button`、`a`、menu、toolbar、導覽與操作區。
+- Rich Menu、rich message、imagemap、card、carousel、template、flex message。
+- 含互動按鈕但沒有獨立文字泡泡的容器。
+- 圖片、影片、貼圖等媒體容器且沒有獨立文字節點。
+- 日期分隔線、已讀、傳送、預約傳送、使用手動聊天、自動回應訊息等提示。
+- 空白、純時間、純按鈕文字及重複訊息。
 
-### 聊天室識別碼
+正式列表只保留目前可見的最近五則文字訊息；被排除的候選只在偵錯模式顯示。
 
-1. 限定 `chat.line.biz` 網域。
-2. 先檢查 `conversationId`、`chatId`、`roomId`、`userId` query parameter。
-3. 再檢查網址中符合長識別碼格式的 path segment。
+## 角色判斷
 
-### 聊天對象名稱
+角色只能是 `customer`、`operator`、`system` 或 `unknown`。每則訊息建立以下資料：
 
-1. 蒐集可見的 heading、ARIA、title、data-testid 及名稱／個人資料相關元素。
-2. 依是否位於聊天標頭可見區、是否具有 name／profile／chat header 訊號進行評分。
-3. 若語意候選不足，再使用可見標頭區文字的幾何位置作為 fallback。
-4. 排除 LINE 導覽、按鈕、時間、網址及面板自身文字。
+```json
+{
+  "text": "string",
+  "role": "customer | operator | system | unknown",
+  "time": "string | null",
+  "confidence": "high | medium | low",
+  "sourceStrategy": "string"
+}
+```
 
-### 可見訊息
+判斷會綜合：
 
-1. 蒐集具有 message ID、data-testid、direction、sender、message／bubble／talk class 或 listitem 語意的可見元素。
-2. 另以聊天內容區內的可見 leaf text 作為 fallback。
-3. 排除導覽、表單、面板、不可見或超出目前 viewport／scroll clip 的元素。
-4. 依文字、時間及角色去重，按畫面垂直位置排序後取最後 5 則。
+- `incoming/customer/received` 或 `outgoing/operator/sent` 等 DOM 語意。
+- 訊息節點與父層的 `flex` 對齊、margin auto 與 justify-content。
+- 訊息是否鄰近客戶頭像。
+- 訊息相對於訊息串中心的 bounding rectangle 位置。
+- `system/notice/event` 等系統訊息結構。
 
-## 本版本不包含功能
+明確方向或系統語意可得到 high confidence；多個一致的排列/位置證據可得到 medium。只有單一弱線索、左右證據衝突或差距不足時，一律輸出 `unknown` 與 low confidence。偵錯模式列出每則訊息的角色分數與依據。
 
-- 不呼叫 AI 或任何外部 API。
-- 不發送 LINE 訊息。
-- 不修改 LINE OA 原生輸入框。
-- 不自動點擊任何 LINE OA 按鈕。
-- 不主動捲動或載入歷史訊息。
-- 不儲存資料到 localStorage、Chrome Storage、IndexedDB 或後端。
-- 不解析圖片、貼圖、影片、音訊或檔案內容。
-- 不與 MLM Repository 或其他系統整合。
+## SPA 與更新監聽
 
-## 安裝與測試方式
+聊天室 ID 優先解析 `chat.line.biz/{accountId}/chat/{conversationId}` 中 `/chat/` 後方的識別碼，避免誤把前段 LINE OA 帳號 ID 當成聊天室 ID。
 
-1. 在 Chrome 開啟 `chrome://extensions`，啟用「開發人員模式」。
-2. 載入 `extension/`；若已載入舊版，點擊「重新載入」。
-3. 確認版本為 `1.1.0` 且沒有錯誤。
-4. 開啟 LINE OA 聊天頁，但先不要選取聊天對象，確認面板顯示未偵測到聊天室。
-5. 選取一位聊天對象，確認名稱、URL、聊天室 ID、時間及可見訊息更新。
-6. 切換至少三位不同聊天對象，確認結果更新且沒有重複面板。
-7. 比對畫面底部可見的文字訊息與面板最近 5 則結果；不要主動捲動。
-8. 展開偵錯資訊，記錄候選數量及策略名稱。
-9. 測試 History 前進／返回、頁面重新整理、面板收合／展開及面板遭移除後恢復。
+監聽 `history.pushState`、`history.replaceState`、`popstate`、`hashchange`、Navigation API（可用時）、URL 輪詢及 `MutationObserver`。變更經 500ms debounce 後重新偵測；已定位且仍可見的訊息串會快取使用，避免反覆全頁掃描。面板本身的 DOM 變化會忽略，避免無限迴圈；面板被移除時會復原且不重複建立。
 
-## 隱私說明
+## 診斷報告
 
-- Extension 僅從目前頁面 DOM 讀取已呈現的資料。
-- 偵測結果只用於當下右側面板，不會保存或傳送。
-- 程式不包含 fetch、XMLHttpRequest、WebSocket 或其他外部資料傳輸。
+使用者按下「匯出偵測報告」後，擴充功能透過 Clipboard API 複製 JSON，欄位固定為：
 
-面板固定顯示：「目前僅在瀏覽器本機偵測畫面內容，資料不會傳送到外部伺服器。」
+- `currentUrl`
+- `detectedContactName`
+- `contactNameCandidates`
+- `conversationId`
+- `detectedMessages`
+- `excludedCandidates`
+- `timestamp`
+
+不讀取或包含 cookie、access token、Authorization header、localStorage、Chrome Storage。報告不會自動上傳。
+
+## 測試方法
+
+1. 在 `chrome://extensions` 重新載入擴充功能，確認版本為 `1.2.0`。
+2. 打開 LINE OA 聊天頁面，選擇一個 header 有名稱的聊天室。
+3. 驗證一般客戶文字、客服文字及可靠的系統事件角色與 confidence。
+4. 驗證圖片、Rich Menu、卡片按鈕、自動回應提示、日期及已讀不在正式列表。
+5. 快速切換兩個聊天對象，確認 0.5 至 1.5 秒內更新且只有一個面板。
+6. 在同一聊天室收到新訊息，不主動捲動，確認已顯示的新訊息自動更新。
+7. 返回未選擇聊天室的頁面，確認顯示「尚未偵測到」。
+8. 展開偵錯區檢查候選分數、排除原因及角色依據；點擊匯出並檢查 JSON 欄位。
+
+自動回歸 fixture 另涵蓋上述八類案例、面板復原、重複建立及敏感欄位靜態檢查。
+
+## 隱私與不包含功能
+
+- 不呼叫外部 API、不串接 AI、不發送 LINE 訊息。
+- 不修改 LINE OA 原生 DOM 或輸入框，不點擊、不捲動。
+- 不儲存偵測資料，不主動載入歷史訊息。
+- 只在右側面板顯示目前已渲染 DOM 的偵測結果。
 
 ## 已知限制
 
-- LINE OA DOM 並非公開穩定介面；LINE OA 網頁更新後 selector、屬性訊號或幾何規則可能需要調整。
-- URL 中的聊天室識別碼最穩定；聊天對象名稱通常可取得，但取決於當下頁面是否已完成渲染。
-- 客戶／客服角色若沒有 direction 或 sender 屬性，只能依左右位置推測，無法保證完全可靠。
-- 訊息時間不是所有訊息都會顯示；未顯示時只能回報「尚未偵測到」。
-- 虛擬清單或未出現在 viewport 的訊息不會被讀取。
-- 圖片卡片內文字可能與一般訊息結構不同，本版本不保證能可靠辨識。
+- LINE OA DOM 並非穩定公開 API；網站更新後 selector、結構評分或角色規則可能需要調整。
+- 客製訊息元件若沒有方向、排列或頭像線索，角色會是 `unknown`。
+- 客服與客戶泡泡若採完全相同結構且沒有可靠方向屬性，不能只靠文字判斷。
+- 媒體、貼圖、圖片與 Rich Menu 刻意不轉成文字。
+- 只掃描 viewport 內已顯示節點；虛擬列表未渲染的訊息不可取得。
 
 ## 下一版本規劃
 
-- 依實際 LINE OA DOM 驗證結果調整候選評分與角色判斷。
-- 加入使用者手動輸入問題。
-- 在明確的隱私與授權邊界下評估 AI 建議 API。
+- 用更多實際 LINE OA DOM 診斷報告校正 selector 與評分門檻。
+- 加入手動輸入問題。
+- 在明確同意與隱私邊界下串接 AI 建議 API。
+- 維持人工確認後才可能進行任何回覆流程。

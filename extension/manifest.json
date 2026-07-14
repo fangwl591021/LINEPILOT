@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "LINE COPILOT",
-  "version": "1.1.0",
-  "description": "在 LINE Official Account Manager 本機偵測目前聊天室與可見訊息。",
+  "version": "1.2.0",
+  "description": "在 LINE Official Account Manager 顯示本機聊天室偵測結果。",
   "background": {
     "service_worker": "background.js"
   },
@@ -17,7 +17,7 @@
         "https://chat.line.biz/*"
       ],
       "js": ["content.js"],
-      "css": ["styles.css"],
+      "css": ["styles.css", "accuracy.css"],
       "run_at": "document_idle"
     }
   ]
