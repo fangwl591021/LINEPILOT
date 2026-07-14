@@ -1,4 +1,4 @@
-# LINE COPILOT v1.3 規格
+# LINE COPILOT v1.3.1 規格
 
 ## 產品定位
 
@@ -9,7 +9,8 @@ LINE COPILOT 是 LINE Official Account Manager 的人工客服輔助面板。v1.
 ## v1.3 目標
 
 - 建立可替換後端的統一 API Client。
-- 預設以 Mock API 驗證完整 UI 工作流程。
+- 預設從 MLM Repository 下載公開知識庫並在瀏覽器本機比對。
+- 保留 Mock API 與正式後端 API 路徑。
 - 讓客服明確控制是否帶入最近可見訊息。
 - 僅在主動點擊後傳送必要資料。
 - 為未來登入、額度、方案與知識庫保留狀態結構。
@@ -18,13 +19,14 @@ LINE COPILOT 是 LINE Official Account Manager 的人工客服輔助面板。v1.
 
 ### `config.js`
 
-集中管理 `API_BASE_URL`、`USE_MOCK_API`、`REQUEST_TIMEOUT_MS`、`MAX_VISIBLE_MESSAGES`。不得存放 API Key。
+集中管理 `USE_MLM_KNOWLEDGE`、`MLM_KNOWLEDGE_URL`、`API_BASE_URL`、`USE_MOCK_API`、`REQUEST_TIMEOUT_MS`、`MAX_VISIBLE_MESSAGES`。不得存放 API Key。
 
 ### `api-client.js`
 
 - `requestAiSuggestion(payload, options)`
+- MLM 知識庫本機檢索與建議組合
 - Mock response
-- `fetch` 與 JSON request
+- 正式 API 的 `fetch` 與 JSON request
 - 30 秒 timeout
 - `AbortController`
 - HTTP 與網路錯誤轉換
@@ -100,7 +102,7 @@ Request：
   "currentUrl": "string",
   "visibleMessages": [],
   "source": "chrome-extension",
-  "extensionVersion": "1.3.0",
+  "extensionVersion": "1.3.1",
   "instructions": {
     "language": "zh-TW",
     "replyMode": "suggestion-only",
@@ -161,16 +163,17 @@ Request：
 - 不修改原生聊天輸入框，不自動點擊。
 - 不保存完整聊天紀錄。
 - 不在 Console 輸出 payload 或對話全文。
-- Mock 模式不執行外部 `fetch`。
+- MLM 模式只下載公開知識庫，不上傳問題或聊天內容。
+- Mock fallback 不執行外部 `fetch`。
 - 正式模式只能配置自有後端來源，Manifest 不使用 `<all_urls>`。
 - AI 建議必須由人工確認與手動貼上。
 
 ## Manifest
 
 - `manifest_version`: 3
-- `version`: 1.3.0
+- `version`: 1.3.1
 - Script order：`config.js`、`api-client.js`、`ai-suggestion.js`、`content.js`
-- Mock 階段沒有 `host_permissions`
+- `host_permissions` 僅允許 MLM Repository 的 raw content 精確來源
 - 不要求 `tabs`、`cookies`、`webRequest` 或 storage 權限
 
 ## 測試方式
@@ -179,7 +182,8 @@ Request：
 
 ## 已知限制
 
-- 正式 API 尚未配置。
+- 正式生成式 AI API 尚未配置；目前是 MLM 知識庫檢索式建議。
+- GitHub 或 MLM Repository 無法連線時，知識庫模式會顯示載入失敗。
 - LINE OA DOM 更新可能影響聊天室偵測。
 - 只帶入目前已渲染且可見的文字訊息。
 - 不支援手機版。

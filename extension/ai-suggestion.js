@@ -35,7 +35,7 @@
         <section id="line-copilot-ai-result-card" class="line-copilot-ai-result-card" hidden aria-labelledby="line-copilot-ai-result-heading">
           <h3 id="line-copilot-ai-result-heading" class="line-copilot-ai-result-title">AI 建議結果</h3>
           <div id="line-copilot-ai-result-text" class="line-copilot-ai-result-text" tabindex="0"></div>
-          <dl class="line-copilot-ai-result-meta"><div><dt>產生時間</dt><dd id="line-copilot-ai-created-at">—</dd></div><div><dt>聊天對象</dt><dd id="line-copilot-ai-contact-name">—</dd></div><div><dt>聊天室上下文</dt><dd id="line-copilot-ai-context-used">否</dd></div></dl>
+          <dl class="line-copilot-ai-result-meta"><div><dt>產生時間</dt><dd id="line-copilot-ai-created-at">—</dd></div><div><dt>聊天對象</dt><dd id="line-copilot-ai-contact-name">—</dd></div><div><dt>聊天室上下文</dt><dd id="line-copilot-ai-context-used">否</dd></div><div><dt>建議來源</dt><dd id="line-copilot-ai-source">—</dd></div></dl>
           <div class="line-copilot-ai-actions"><button id="line-copilot-ai-copy" class="line-copilot-primary-button" type="button">一鍵複製</button><button id="line-copilot-ai-regenerate" class="line-copilot-secondary-button" type="button">重新產生</button></div>
           <p id="line-copilot-ai-copy-status" class="line-copilot-ai-copy-status" role="status" aria-live="polite"></p>
         </section>
@@ -165,7 +165,7 @@
       currentUrl: copilotState.currentChat.currentUrl || globalThis.location.href,
       visibleMessages: context,
       source: "chrome-extension",
-      extensionVersion: "1.3.0",
+      extensionVersion: "1.3.1",
       instructions: {
         language: "zh-TW",
         replyMode: "suggestion-only",
@@ -188,6 +188,7 @@
     const createdAt = getElement("line-copilot-ai-created-at");
     const contactName = getElement("line-copilot-ai-contact-name");
     const contextUsed = getElement("line-copilot-ai-context-used");
+    const source = getElement("line-copilot-ai-source");
     const copyStatus = getElement("line-copilot-ai-copy-status");
     if (createdAt) createdAt.textContent = formatCreatedAt(response.createdAt);
     if (contactName) contactName.textContent = payload.contactName || EMPTY_VALUE;
@@ -195,6 +196,11 @@
       contextUsed.textContent = payload.visibleMessages.length
         ? `是，${payload.visibleMessages.length} 則`
         : "否";
+    }
+    if (source) {
+      source.textContent = response.model === "mlm-knowledge-local"
+        ? "MLM 知識庫（本機比對）"
+        : response.model || "後端 API";
     }
     if (copyStatus) copyStatus.textContent = "";
   }

@@ -6,11 +6,11 @@ AI 建議不會自動填入或送出 LINE 訊息。客服必須自行檢查內�
 
 ## 專案狀態
 
-- 版本：**1.3.0**
+- 版本：**1.3.1**
 - Chrome Extension：Manifest V3、原生 HTML／CSS／JavaScript
-- 預設 API 模式：Mock，不呼叫外部服務
+- 預設建議來源：MLM Repository 的 48 筆公開知識庫，本機比對
+- 面板寬度：420px，小視窗會自動縮小
 - 程式位置：`extension/`
-- 不依賴 MLM Repository
 
 ## v1.3 功能
 
@@ -31,8 +31,8 @@ AI 建議不會自動填入或送出 LINE 訊息。客服必須自行檢查內�
 extension/
 ├─ manifest.json
 ├─ background.js
-├─ config.js          # API Base URL、Mock 開關、timeout、上下文上限
-├─ api-client.js      # fetch、AbortController、timeout、HTTP 錯誤、Mock API
+├─ config.js          # MLM 知識庫、API Base URL、Mock 開關、timeout、上下文上限
+├─ api-client.js      # MLM 本機比對、fetch、AbortController、HTTP 錯誤、Mock API
 ├─ ai-suggestion.js   # AI 區塊、payload、狀態、loading、結果、複製
 ├─ content.js         # 聊天偵測、既有面板及各模組啟動
 ├─ styles.css
@@ -48,26 +48,31 @@ Manifest 中的內容腳本載入順序為：
 config.js → api-client.js → ai-suggestion.js → content.js
 ```
 
-## Mock API
+## MLM 知識庫模式
 
 預設的 [extension/config.js](extension/config.js) 設定如下：
 
 ```js
 const LINE_COPILOT_CONFIG = {
   API_BASE_URL: "",
+  USE_MLM_KNOWLEDGE: true,
+  MLM_KNOWLEDGE_URL: "https://raw.githubusercontent.com/fangwl591021/MLM/main/data/knowledge-base.json",
   USE_MOCK_API: true,
   REQUEST_TIMEOUT_MS: 30000,
   MAX_VISIBLE_MESSAGES: 5
 };
 ```
 
-`USE_MOCK_API: true` 時不會執行 `fetch`，約 800ms 後回傳固定測試建議。此模式不需要 API Key、Worker 或額外網域權限。
+Extension 執行時會優先使用 `USE_MLM_KNOWLEDGE: true`：背景 Service Worker 只下載 MLM 公開知識庫，問題與聊天室文字在瀏覽器本機比對，不會上傳到 GitHub 或 MLM。`USE_MOCK_API` 保留為無法使用 Extension Runtime 時的測試 fallback。
+
+Manifest 僅新增精確的 `https://raw.githubusercontent.com/fangwl591021/MLM/*` host permission，不使用 `<all_urls>`。
 
 ## 正式 API 設定
 
 後端完成後，只在 [extension/config.js](extension/config.js) 修改：
 
 ```js
+USE_MLM_KNOWLEDGE: false,
 API_BASE_URL: "https://your-worker.example.workers.dev",
 USE_MOCK_API: false
 ```
@@ -99,7 +104,7 @@ USE_MOCK_API: false
     }
   ],
   "source": "chrome-extension",
-  "extensionVersion": "1.3.0",
+  "extensionVersion": "1.3.1",
   "instructions": {
     "language": "zh-TW",
     "replyMode": "suggestion-only",
@@ -145,21 +150,21 @@ USE_MOCK_API: false
 2. 開啟「開發人員模式」。
 3. 點擊「載入未封裝項目」。
 4. 選擇本專案的 `extension` 資料夾。
-5. 確認 LINE COPILOT 版本為 `1.3.0`。
+5. 確認 LINE COPILOT 版本為 `1.3.1`。
 6. 開啟 `https://manager.line.biz/` 並進入聊天頁面。
 
 程式更新後，先在 `chrome://extensions` 點擊重新載入，再對 LINE OA 頁面按 `Ctrl + Shift + R`。
 
 ## AI 建議測試
 
-1. 保持 `USE_MOCK_API: true`。
+1. 保持 `USE_MLM_KNOWLEDGE: true`。
 2. 開啟聊天室，確認聊天對象與最近可見訊息已更新。
 3. 在「AI 建議回覆」輸入至少 2 個字元。
 4. 檢查上下文預覽與「已帶入 X 則對話」。
-5. 點擊「產生 AI 建議」，確認約 800ms loading 後顯示 Mock 建議。
+5. 輸入「負離子眼鏡有什麼功能」，點擊「產生 AI 建議」，確認來源顯示「MLM 知識庫（本機比對）」且內容命中防藍光／UV400 知識。
 6. 測試一鍵複製、重新產生與清除。
 7. 取消上下文 checkbox，確認顯示帶入 0 則。
-8. 未開啟聊天室時，確認仍可用純手動問題產生 Mock 建議。
+8. 未開啟聊天室時，確認仍可用純手動問題查詢 MLM 知識庫。
 
 完整驗收項目請參閱 [docs/v1.3-test-checklist.md](docs/v1.3-test-checklist.md)。
 
@@ -169,9 +174,10 @@ USE_MOCK_API: false
 - 不攔截 LINE OA 網路請求。
 - 不保存完整聊天紀錄，不寫入 Chrome Storage 或後端。
 - 不在 Console 輸出問題、對話或建議全文。
-- 只有使用者點擊「產生 AI 建議」時才組合並傳送必要資料。
+- MLM 本機模式只下載公開知識庫；問題與聊天室內容不會傳送到 GitHub、MLM Worker 或其他伺服器。
+- 切換正式 API 模式後，才會在使用者點擊「產生 AI 建議」時傳送必要資料。
 - 取消「帶入目前聊天室最近訊息」後，`visibleMessages` 為空陣列。
-- Mock 模式不傳送任何資料。
+- MLM 本機模式與 Mock fallback 都不傳送問題或聊天內容。
 - 不呼叫 LINE Messaging API、Push API 或 Reply API。
 - 不修改 LINE OA 原生輸入框、不點擊傳送按鈕、不自動發送訊息。
 - AI 建議只供參考，送出前必須人工確認。
@@ -189,7 +195,7 @@ USE_MOCK_API: false
 
 - 帳號登入與帳號綁定
 - 免費額度及付費方案
-- 工作空間與企業知識庫
+- 知識庫管理介面（資料由 MLM Repository 維護）
 - CRM
 - 自動回覆或自動發送 LINE 訊息
 

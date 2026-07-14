@@ -2,7 +2,7 @@
   position: fixed;
   top: 0;
   right: 0;
-  width: 340px;
+  width: min(420px, calc(100vw - 16px));
   height: 100vh;
   box-sizing: border-box;
   color: #17212b;

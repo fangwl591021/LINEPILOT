@@ -245,7 +245,7 @@
           const rect = element.getBoundingClientRect();
           if (
             rect.left < Math.max(220, usableRight * 0.2) ||
-            rect.right > usableRight + 2 ||
+            Math.min(rect.right, usableRight) - rect.left < 260 ||
             rect.top < 70 ||
             rect.width < 260 ||
             rect.height < 140
@@ -302,7 +302,7 @@
               const rect = element.getBoundingClientRect();
               if (
                 rect.left < Math.max(220, usableRight * 0.24) ||
-                rect.right > usableRight + 2 ||
+                Math.min(rect.right, usableRight) - rect.left < 300 ||
                 rect.top < 90 ||
                 rect.top > 420 ||
                 rect.width < 300 ||
@@ -376,7 +376,7 @@
         rect.top < 45 ||
         rect.top > 260 ||
         rect.left < Math.max(220, usableRight * 0.2) ||
-        rect.right > usableRight + 2 ||
+        Math.min(rect.right, usableRight) - rect.left < 150 ||
         rect.width < 150
       ) {
         return;
@@ -1561,7 +1561,7 @@
           <button id="line-copilot-test-button" class="line-copilot-primary-button" type="button">測試功能</button>
           <p id="line-copilot-test-result" class="line-copilot-test-result" role="status" aria-live="polite"></p>
         </main>
-        <footer class="line-copilot-footer"><p class="line-copilot-privacy">只有在您主動點擊產生建議時，才會傳送本次問題與勾選的對話內容。</p><button id="line-copilot-close-button" class="line-copilot-secondary-button" type="button">關閉面板</button><span class="line-copilot-version">v1.3.0</span></footer>
+        <footer class="line-copilot-footer"><p class="line-copilot-privacy">MLM 知識庫會下載到瀏覽器本機比對，問題與對話內容不會上傳。</p><button id="line-copilot-close-button" class="line-copilot-secondary-button" type="button">關閉面板</button><span class="line-copilot-version">v1.3.1</span></footer>
       </section>
     `;
 
