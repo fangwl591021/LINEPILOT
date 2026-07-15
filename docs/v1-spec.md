@@ -83,7 +83,7 @@ LINE COPILOT 是 LINE OA 人工客服的右側操作面板。v1.4 專注 UI、UX
 
 ## 技術資訊位置
 
-聊天室 ID、完整網址、偵測來源、confidence、候選元素、排除原因、payload、response metadata、requestId、model、usage 與 Mock 狀態只存在於兩個預設收合區，不顯示在客戶摘要或結果主內容。
+完整網址、偵測來源、confidence、候選元素、排除原因、payload、response metadata、requestId、model、usage 與 Mock 狀態只存在於兩個預設收合區，不顯示在結果主內容。
 
 ## 視覺規格
 
@@ -137,8 +137,8 @@ LINE COPILOT 是 LINE OA 人工客服的右側操作面板。v1.4 專注 UI、UX
 
 ## v1.5 客戶資料與 K 點整合
 
-- LINE UID：從 `chat.line.biz/.../chat/U...` 網址取得，僅接受 `U` 開頭的合理格式。
-- 頭貼：優先使用 MLM thread/profile 的 `pictureUrl`，否則使用聊天室 Header 中與名稱最近的可見 HTTPS 圖片。
+- 聊天室 ID：從 `chat.line.biz/.../chat/U...` 網址取得；此 ID 不保證等於任一 K 點來源 OA 的 Messaging API UID。
+- 頭貼：優先使用聊天室 Header 中與名稱最近的可見 HTTPS 圖片，並與名稱一起作為跨 OA UID 的唯一匹配依據；無法唯一匹配時不顯示假 0。
 - MLM 登入：`POST /api/auth/extension-login`，成功後回傳 HMAC 簽章、8 小時有效的 `lcx1` Token。
 - 客戶摘要：`GET /api/copilot/customer` 僅回傳目前 UID、姓名、頭貼、狀態、K 點餘額與解析結果，不回傳聊天歷史或同名候選明細。
 - K 點異動：沿用 `/admin/points/grant` 與 `/admin/points/deduct`；Token、客服樓層權限、來源 UID 與既有 Worker 規則都必須通過。

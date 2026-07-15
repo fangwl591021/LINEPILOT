@@ -29,7 +29,7 @@
       <section id="line-copilot-customer-data-section" class="line-copilot-customer-data-section" aria-labelledby="line-copilot-customer-data-heading">
         <div class="line-copilot-section-heading-row"><h2 id="line-copilot-customer-data-heading" class="line-copilot-section-title">客戶資料與 K 點</h2><button id="line-copilot-customer-refresh" class="line-copilot-ai-link-button" type="button" hidden>重新整理</button></div>
         <div id="line-copilot-mlm-login" class="line-copilot-mlm-login">
-          <p class="line-copilot-customer-data-note">登入 MLM 客服帳號後，可依目前 LINE UID 讀取 K 點。帳密與短效 Token 不會儲存。</p>
+          <p class="line-copilot-customer-data-note">登入 MLM 客服帳號後，會用目前聊天室名稱與頭貼安全對應 K 點 UID。帳密與短效 Token 不會儲存。</p>
           <label class="line-copilot-customer-field"><span>帳號</span><input id="line-copilot-mlm-username" class="line-copilot-customer-input" type="text" autocomplete="username" placeholder="客服帳號"></label>
           <label class="line-copilot-customer-field"><span>密碼</span><input id="line-copilot-mlm-password" class="line-copilot-customer-input" type="password" autocomplete="current-password" placeholder="客服密碼"></label>
           <button id="line-copilot-mlm-login-button" class="line-copilot-primary-button" type="button">登入並讀取 K 點</button>
@@ -64,6 +64,11 @@
     return /^U[a-zA-Z0-9_-]{20,}$/.test(String(value || ""));
   }
 
+  function maskedUid(value) {
+    const uid = String(value || "");
+    return uid.length > 12 ? `${uid.slice(0, 5)}…${uid.slice(-4)}` : uid;
+  }
+
   function renderAvatar(url, name) {
     const image = get("line-copilot-summary-avatar");
     const fallback = get("line-copilot-summary-avatar-fallback");
@@ -91,7 +96,7 @@
     const name = customer.displayName || (chat.contactName !== EMPTY_VALUE ? chat.contactName : "");
     const avatarUrl = customer.pictureUrl || chat.contactAvatarUrl || "";
     setText("line-copilot-summary-name", name, "尚未偵測到");
-    setText("line-copilot-summary-uid", uid, "尚未取得 LINE UID");
+    setText("line-copilot-summary-uid", uid, "尚未取得聊天室 ID");
     setText("line-copilot-conversation-id", uid || chat.conversationId, EMPTY_VALUE);
     renderAvatar(avatarUrl, name);
   }
@@ -144,14 +149,15 @@
         const card = document.createElement("div");
         card.className = "line-copilot-point-balance-card";
         const title = document.createElement("span"); title.textContent = label;
-        const value = document.createElement("strong"); value.textContent = `${formatPoint(sourceTotal(key))} K點`;
-        const mapping = document.createElement("small"); mapping.textContent = sourceUid(key) ? "已對應會員" : "尚未對應";
+        const mappedUid = sourceUid(key);
+        const value = document.createElement("strong"); value.textContent = mappedUid ? `${formatPoint(sourceTotal(key))} K點` : "尚未取得";
+        const mapping = document.createElement("small"); mapping.textContent = mappedUid ? `K點 UID ${maskedUid(mappedUid)}` : "尚未對應";
         card.append(title, value, mapping); container.appendChild(card);
       });
     }
     const hasAnyIdentity = Boolean(sourceUid("oa1") || sourceUid("oa2"));
     setHidden("line-copilot-point-content", false);
-    setText("line-copilot-customer-data-status", hasAnyIdentity ? `已依 LINE UID 讀取${balances.length ? " K 點" : "，目前無 K 點資料"}` : `UID ${uid || "未取得"} 尚未對應母站會員`);
+    setText("line-copilot-customer-data-status", hasAnyIdentity ? `已依對應 K 點 UID 讀取${balances.length ? " K 點" : "，目前無 K 點資料"}` : `UID ${uid || "未取得"} 尚未對應母站會員`);
     const source = get("line-copilot-point-source")?.value || "oa1";
     const grant = get("line-copilot-point-grant");
     const deduct = get("line-copilot-point-deduct");
@@ -169,7 +175,7 @@
     runtime.loadingUid = uid;
     setText("line-copilot-customer-data-status", "正在讀取 MLM 客戶與 K 點資料…");
     try {
-      const path = `/api/copilot/customer?floor=main&uid=${encodeURIComponent(uid)}&name=${encodeURIComponent(chat.contactName || "")}`;
+      const path = `/api/copilot/customer?floor=main&uid=${encodeURIComponent(uid)}&name=${encodeURIComponent(chat.contactName || "")}&picture_url=${encodeURIComponent(chat.contactAvatarUrl || "")}`;
       const response = await sendMessage({ type: "LINE_COPILOT_MLM_REQUEST", token: runtime.token, path, method: "GET" });
       if (sequence !== runtime.requestSequence || uid !== runtime.chat?.conversationId) return;
       runtime.data = response.data?.data || null;
@@ -261,8 +267,8 @@
   async function copyUid() {
     const uid = validLineUid(runtime.chat?.conversationId) ? runtime.chat.conversationId : "";
     if (!uid) return;
-    try { await navigator.clipboard.writeText(uid); setText("line-copilot-customer-data-status", "LINE UID 已複製"); }
-    catch (_error) { setText("line-copilot-customer-data-status", "無法複製 LINE UID"); }
+    try { await navigator.clipboard.writeText(uid); setText("line-copilot-customer-data-status", "聊天室 ID 已複製"); }
+    catch (_error) { setText("line-copilot-customer-data-status", "無法複製聊天室 ID"); }
   }
 
   function init(root, getLatestChat) {

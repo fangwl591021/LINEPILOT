@@ -1,6 +1,6 @@
 # LINE COPILOT
 
-LINE COPILOT 是顯示在 LINE Official Account Manager 右側的 Chrome Extension 客服輔助面板。v1.5 在客服工作台加入客戶頭貼、LINE UID 與經 MLM 短效授權的 K 點查詢／人工異動。
+LINE COPILOT 是顯示在 LINE Official Account Manager 右側的 Chrome Extension 客服輔助面板。v1.5 在客服工作台加入客戶頭貼、聊天室 ID 與經 MLM 短效授權的 K 點查詢／人工異動。
 
 建議回覆不會自動填入或送出 LINE。客服必須人工確認、複製並手動貼到 LINE OA。
 
@@ -26,17 +26,17 @@ LINE COPILOT 是顯示在 LINE Official Account Manager 右側的 Chrome Extensi
 7. 開發與偵錯資訊（預設收合）
 8. 精簡底部操作
 
-第一屏優先顯示聊天對象、聊天室狀態、最近一則客戶訊息、上下文數量、快速操作、需求輸入框與「產生建議回覆」CTA。聊天室 ID、完整網址、selector、confidence、requestId、model 與 token usage 不出現在一般畫面。
+第一屏優先顯示聊天對象、聊天室狀態、最近一則客戶訊息、上下文數量、快速操作、需求輸入框與「產生建議回覆」CTA。完整網址、selector、confidence、requestId、model 與 token usage 不出現在一般畫面。
 
 Header 的全螢幕按鈕可將側欄切換為三欄工作台：左欄顯示客戶摘要與次要資訊，中欄處理 AI 需求輸入，右欄顯示建議回覆；點擊返回按鈕或按 Esc 可回到 400px 側欄，輸入與結果狀態不會重建。
 
 ## v1.5 客戶資料與 K 點
 
 - 從 LINE OA 聊天室 Header 取得目前客戶頭貼，MLM API 的 `pictureUrl` 可作為較穩定來源。
-- 將網址中的 `U...` 聊天識別碼標示為 LINE UID，提供一鍵複製。
+- 將網址中的 `U...` 標示為聊天室 ID；它不保證等於 K 點來源 OA 的 LINE UID。
 - 客服使用既有 MLM 帳號登入後，由 Worker 簽發 8 小時短效 Token。
 - Token 只保留在目前分頁的記憶體，不寫入 localStorage、Chrome Storage 或 Extension 原始碼。
-- 依 LINE UID 讀取康立智能／康立全球 K 點餘額與母站 UID 對應結果。
+- 以聊天室名稱與 Header 頭貼進行唯一會員匹配，再讀取康立智能／康立全球 K 點餘額；同名或無法唯一確認時不猜測。
 - 康立智能可贈扣；康立全球維持只能扣點。
 - UID 尚未可靠對應母站會員時，面板只顯示狀態並禁止贈扣。
 - 每次異動必須填寫原因並通過人工確認；操作仍由 MLM Worker 驗證與記錄。
@@ -76,7 +76,7 @@ Header 的全螢幕按鈕可將側欄切換為三欄工作台：左欄顯示客�
 - 聊天室是否開啟
 - 最近訊息數量
 - 最後偵測時間
-- LINE UID（原聊天室識別碼）
+- 聊天室 ID（不等同 K 點來源 UID）
 - 目前網址
 - 偵測來源與信心程度
 
