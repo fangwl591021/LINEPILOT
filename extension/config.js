@@ -2,6 +2,7 @@
 
 const LINE_COPILOT_CONFIG = Object.freeze({
   API_BASE_URL: "",
+  MLM_API_BASE_URL: "https://mlm.fangwl591021.workers.dev",
   USE_MLM_KNOWLEDGE: true,
   MLM_KNOWLEDGE_URL:
     "https://raw.githubusercontent.com/fangwl591021/MLM/main/data/knowledge-base.json",

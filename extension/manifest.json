@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "LINE COPILOT",
-  "version": "1.3.1",
-  "description": "在 LINE Official Account Manager 顯示聊天室偵測與 MLM 知識庫建議回覆。",
+  "version": "1.5.0",
+  "description": "LINE OA 客服操作面板：客戶摘要、快速操作與人工確認的建議回覆。",
   "background": {
     "service_worker": "background.js"
   },
@@ -19,7 +19,9 @@
       "js": [
         "config.js",
         "api-client.js",
+        "customer-integration.js",
         "ai-suggestion.js",
+        "copilot-panel.js",
         "content.js"
       ],
       "css": [
@@ -30,6 +32,7 @@
     }
   ],
   "host_permissions": [
-    "https://raw.githubusercontent.com/fangwl591021/MLM/*"
+    "https://raw.githubusercontent.com/fangwl591021/MLM/*",
+    "https://mlm.fangwl591021.workers.dev/*"
   ]
 }

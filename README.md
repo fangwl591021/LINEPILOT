@@ -1,29 +1,108 @@
 # LINE COPILOT
 
-LINE COPILOT 是在 LINE Official Account Manager 右側顯示的 Chrome Extension 面板。v1.3 提供「手動輸入問題 → 產生 AI 建議 → 人工確認 → 一鍵複製」工作流程，同時保留 v1.2 的聊天室與可見訊息偵測功能。
+LINE COPILOT 是顯示在 LINE Official Account Manager 右側的 Chrome Extension 客服輔助面板。v1.5 在客服工作台加入客戶頭貼、聊天室 ID 與經 MLM 短效授權的 K 點查詢／人工異動。
 
-AI 建議不會自動填入或送出 LINE 訊息。客服必須自行檢查內容、複製並手動貼到 LINE OA 聊天輸入框。
+建議回覆不會自動填入或送出 LINE。客服必須人工確認、複製並手動貼到 LINE OA。
 
 ## 專案狀態
 
-- 版本：**1.3.1**
-- Chrome Extension：Manifest V3、原生 HTML／CSS／JavaScript
-- 預設建議來源：MLM Repository 的 48 筆公開知識庫，本機比對
-- 面板寬度：420px，小視窗會自動縮小
+- 版本：**1.5.0**
+- 技術：Manifest V3、原生 HTML／CSS／JavaScript
+- 面板寬度：側欄 400px；可切換全螢幕三欄工作台
+- 預設資料來源：MLM 公開知識庫，本機比對
+- 測試模式：保留 Mock API，不需要正式 AI API
 - 程式位置：`extension/`
 
-## v1.3 功能
+## v1.4 UI 重構
 
-- 手動輸入最多 2,000 字的問題或整理需求。
-- Enter 不送出；可正常輸入多行內容。
-- 可選擇是否帶入最近可見的聊天室文字訊息，最多 5 則。
-- 優先排除 low confidence 訊息；若沒有其他訊息才使用 low confidence。
-- 可在送出前展開預覽本機上下文。
-- 使用者主動點擊「產生 AI 建議」後才呼叫統一 API Client。
-- 顯示 loading、錯誤、建議內容、產生時間、聊天對象與上下文使用狀態。
-- 支援清除、重新產生與一鍵複製。
-- Clipboard API 失敗時自動選取建議文字，供使用者按 `Ctrl+C`。
-- 面板收合再展開時保留目前輸入與結果。
+新版資訊層級：
+
+1. 固定 Header
+2. 客戶摘要
+3. 快速操作
+4. AI 建議輸入與產生
+5. 建議結果
+6. 客戶與聊天室資訊（預設收合）
+7. 開發與偵錯資訊（預設收合）
+8. 精簡底部操作
+
+第一屏優先顯示聊天對象、聊天室狀態、最近一則客戶訊息、上下文數量、快速操作、需求輸入框與「產生建議回覆」CTA。完整網址、selector、confidence、requestId、model 與 token usage 不出現在一般畫面。
+
+Header 的全螢幕按鈕可將側欄切換為三欄工作台：左欄顯示客戶摘要與次要資訊，中欄處理 AI 需求輸入，右欄顯示建議回覆；點擊返回按鈕或按 Esc 可回到 400px 側欄，輸入與結果狀態不會重建。
+
+## v1.5 客戶資料與 K 點
+
+- 從 LINE OA 聊天室 Header 取得目前客戶頭貼，MLM API 的 `pictureUrl` 可作為較穩定來源。
+- 將網址中的 `U...` 標示為聊天室 ID；它不保證等於 K 點來源 OA 的 LINE UID。
+- 客服使用既有 MLM 帳號登入後，由 Worker 簽發 8 小時短效 Token。
+- Token 只保留在目前分頁的記憶體，不寫入 localStorage、Chrome Storage 或 Extension 原始碼。
+- 以聊天室名稱與 Header 頭貼進行唯一會員匹配，再讀取康立智能／康立全球 K 點餘額；同名或無法唯一確認時不猜測。
+- 康立智能可贈扣；康立全球維持只能扣點。
+- UID 尚未可靠對應母站會員時，面板只顯示狀態並禁止贈扣。
+- 每次異動必須填寫原因並通過人工確認；操作仍由 MLM Worker 驗證與記錄。
+## 快速操作
+
+提供以下小型快捷按鈕：
+
+- 建議怎麼回
+- 回覆更親切
+- 回覆更簡短
+- 客訴安撫
+- 產品說明
+- 引導成交
+
+快捷按鈕只會把對應需求填入輸入框，不會自動呼叫 API。客服仍須按下「產生建議回覆」。
+
+## 建議結果卡片
+
+建議成功後顯示：
+
+- 建議回覆文字
+- 產生時間
+- 已帶入的對話數
+- 測試模式標籤（僅 Mock response）
+- 複製回覆
+- 重新產生
+- 更親切
+- 更簡短
+
+「更親切」與「更簡短」會在原需求後加入調整指令，再次呼叫相同 API Client。結果文字最大高度為 300px，超過時在卡片內捲動。
+
+## 客戶與聊天室資訊
+
+預設收合，展開後才顯示：
+
+- 聊天對象
+- 聊天室是否開啟
+- 最近訊息數量
+- 最後偵測時間
+- 聊天室 ID（不等同 K 點來源 UID）
+- 目前網址
+- 偵測來源與信心程度
+
+## 開發與偵錯資訊
+
+預設收合，包含訊息／名稱候選、排除原因、角色證據、Header 候選、request payload、response metadata、requestId、model、usage、Mock 狀態及診斷 JSON 匯出工具。
+
+## 切換聊天室
+
+切換聊天對象後：
+
+- 客戶摘要與對話預覽立即更新。
+- 尚未送出的輸入內容、checkbox、快捷選擇與折疊狀態保留。
+- 舊的建議結果自動清除。
+- 顯示「已切換聊天對象，請重新產生建議」。
+
+這可避免客服把上一位客戶的建議誤認成目前客戶的結果。
+
+## 無聊天室狀態
+
+未選擇聊天室時仍可手動輸入問題：
+
+- 客戶摘要顯示「尚未選擇聊天室」。
+- 上下文 checkbox 自動停用。
+- `contactName`、`conversationId` 為 `null`。
+- `visibleMessages` 為空陣列。
 
 ## 程式架構
 
@@ -31,184 +110,80 @@ AI 建議不會自動填入或送出 LINE 訊息。客服必須自行檢查內�
 extension/
 ├─ manifest.json
 ├─ background.js
-├─ config.js          # MLM 知識庫、API Base URL、Mock 開關、timeout、上下文上限
-├─ api-client.js      # MLM 本機比對、fetch、AbortController、HTTP 錯誤、Mock API
-├─ ai-suggestion.js   # AI 區塊、payload、狀態、loading、結果、複製
-├─ content.js         # 聊天偵測、既有面板及各模組啟動
+├─ config.js
+├─ api-client.js
+├─ ai-suggestion.js   # 輸入、快捷指令、loading、結果與錯誤
+├─ copilot-panel.js   # Header、摘要、折疊區與面板生命週期
+├─ content.js         # 聊天偵測與模組協調
 ├─ styles.css
 ├─ accuracy.css
 ├─ popup.html
-├─ popup.js
-└─ icons/
+└─ popup.js
 ```
 
-Manifest 中的內容腳本載入順序為：
+載入順序：
 
 ```text
-config.js → api-client.js → ai-suggestion.js → content.js
+config.js → api-client.js → ai-suggestion.js → copilot-panel.js → content.js
 ```
 
-## MLM 知識庫模式
-
-預設的 [extension/config.js](extension/config.js) 設定如下：
-
-```js
-const LINE_COPILOT_CONFIG = {
-  API_BASE_URL: "",
-  USE_MLM_KNOWLEDGE: true,
-  MLM_KNOWLEDGE_URL: "https://raw.githubusercontent.com/fangwl591021/MLM/main/data/knowledge-base.json",
-  USE_MOCK_API: true,
-  REQUEST_TIMEOUT_MS: 30000,
-  MAX_VISIBLE_MESSAGES: 5
-};
-```
-
-Extension 執行時會優先使用 `USE_MLM_KNOWLEDGE: true`：背景 Service Worker 只下載 MLM 公開知識庫，問題與聊天室文字在瀏覽器本機比對，不會上傳到 GitHub 或 MLM。`USE_MOCK_API` 保留為無法使用 Extension Runtime 時的測試 fallback。
-
-Manifest 僅新增精確的 `https://raw.githubusercontent.com/fangwl591021/MLM/*` host permission，不使用 `<all_urls>`。
-
-## 正式 API 設定
-
-後端完成後，只在 [extension/config.js](extension/config.js) 修改：
-
-```js
-USE_MLM_KNOWLEDGE: false,
-API_BASE_URL: "https://your-worker.example.workers.dev",
-USE_MOCK_API: false
-```
-
-並在 `extension/manifest.json` 加入該 Worker 的單一來源，例如：
-
-```json
-"host_permissions": [
-  "https://your-worker.example.workers.dev/*"
-]
-```
-
-不要加入 `<all_urls>`，也不要把 OpenAI、Gemini 或其他供應商 API Key 放進 Extension。Extension 只應呼叫自己的 LINE COPILOT 後端。
-
-## Request 範例
-
-```json
-{
-  "question": "請幫我禮貌回覆客戶目前仍有庫存",
-  "contactName": "Tonyfang",
-  "conversationId": "U1234567890",
-  "currentUrl": "https://chat.line.biz/account/chat/U1234567890",
-  "visibleMessages": [
-    {
-      "text": "請問還有庫存嗎？",
-      "role": "customer",
-      "time": "15:01",
-      "confidence": "high"
-    }
-  ],
-  "source": "chrome-extension",
-  "extensionVersion": "1.3.1",
-  "instructions": {
-    "language": "zh-TW",
-    "replyMode": "suggestion-only",
-    "mustBeReviewedByHuman": true,
-    "doNotAutoSend": true
-  }
-}
-```
-
-## Response 範例
-
-成功：
-
-```json
-{
-  "success": true,
-  "suggestion": "您好，目前商品仍有庫存，歡迎您告訴我們需要的數量。",
-  "requestId": "req_123",
-  "model": "backend-selected-model",
-  "createdAt": "2026-07-14T10:00:00.000Z",
-  "usage": {
-    "inputTokens": 0,
-    "outputTokens": 0
-  }
-}
-```
-
-失敗：
-
-```json
-{
-  "success": false,
-  "error": {
-    "code": "RATE_LIMITED",
-    "message": "今日使用次數已達上限"
-  }
-}
-```
-
-## Chrome 開發者模式安裝
+## 安裝方式
 
 1. 開啟 `chrome://extensions`。
 2. 開啟「開發人員模式」。
 3. 點擊「載入未封裝項目」。
 4. 選擇本專案的 `extension` 資料夾。
-5. 確認 LINE COPILOT 版本為 `1.3.1`。
+5. 確認版本為 `1.5.0`。
 6. 開啟 `https://manager.line.biz/` 並進入聊天頁面。
 
-程式更新後，先在 `chrome://extensions` 點擊重新載入，再對 LINE OA 頁面按 `Ctrl + Shift + R`。
+更新程式後，先重新載入 Extension，再用 `Ctrl + Shift + R` 重新整理 LINE OA。
 
-## AI 建議測試
+## MLM 與 Mock 模式
 
-1. 保持 `USE_MLM_KNOWLEDGE: true`。
-2. 開啟聊天室，確認聊天對象與最近可見訊息已更新。
-3. 在「AI 建議回覆」輸入至少 2 個字元。
-4. 檢查上下文預覽與「已帶入 X 則對話」。
-5. 輸入「負離子眼鏡有什麼功能」，點擊「產生 AI 建議」，確認來源顯示「MLM 知識庫（本機比對）」且內容命中防藍光／UV400 知識。
-6. 測試一鍵複製、重新產生與清除。
-7. 取消上下文 checkbox，確認顯示帶入 0 則。
-8. 未開啟聊天室時，確認仍可用純手動問題查詢 MLM 知識庫。
+目前 `config.js` 保留：
 
-完整驗收項目請參閱 [docs/v1.3-test-checklist.md](docs/v1.3-test-checklist.md)。
+- `USE_MLM_KNOWLEDGE: true`：下載 MLM 公開知識庫，在瀏覽器本機比對。
+- `USE_MOCK_API: true`：供自動測試或沒有 Extension Runtime 的環境使用。
+- `API_BASE_URL: ""`：尚未配置正式 AI API。
+- `MLM_API_BASE_URL`：MLM 客戶資料與 K 點 API；實際呼叫由 background service worker 代理。
+
+Extension 不包含任何 AI API Key，也不直接呼叫 OpenAI、Gemini 或 LINE Messaging API。
 
 ## 安全與隱私
 
-- 不讀取 Cookie、LINE Token、localStorage 或 Authorization Header。
-- 不攔截 LINE OA 網路請求。
-- 不保存完整聊天紀錄，不寫入 Chrome Storage 或後端。
-- 不在 Console 輸出問題、對話或建議全文。
-- MLM 本機模式只下載公開知識庫；問題與聊天室內容不會傳送到 GitHub、MLM Worker 或其他伺服器。
-- 切換正式 API 模式後，才會在使用者點擊「產生 AI 建議」時傳送必要資料。
-- 取消「帶入目前聊天室最近訊息」後，`visibleMessages` 為空陣列。
-- MLM 本機模式與 Mock fallback 都不傳送問題或聊天內容。
-- 不呼叫 LINE Messaging API、Push API 或 Reply API。
-- 不修改 LINE OA 原生輸入框、不點擊傳送按鈕、不自動發送訊息。
-- AI 建議只供參考，送出前必須人工確認。
+- 不讀取 LINE OA Cookie、LINE Token、localStorage 或既有 Authorization Header。
+- 不保存完整聊天紀錄，不使用 Chrome Storage；MLM 短效 Token 僅存在目前分頁記憶體。
+- 不修改 LINE OA 原生輸入框。
+- 不點擊 LINE OA 原生傳送按鈕。
+- 不使用 LINE Push API 或 Reply API。
+- 不自動發送任何訊息。
+- MLM 知識庫仍在本機比對；客戶與 K 點資料只在客服主動登入後，透過限定端點讀取。
+- 所有建議都必須由客服人工確認。
 
-## 常見錯誤
+## 尚未包含
 
-- **尚未設定 LINE COPILOT API**：`USE_MOCK_API` 已關閉，但 `API_BASE_URL` 為空。
-- **無法連線**：確認 Worker URL、網路及 `host_permissions` 是否只加入正確 Worker 來源。
-- **AI 回覆逾時**：預設 timeout 為 30 秒，可在 `config.js` 調整。
-- **401／403／429／500**：面板會顯示對應的繁體中文訊息。
-- **複製失敗**：建議文字會被選取，可按 `Ctrl+C` 手動複製。
-- **內容仍是舊版**：重新載入 Extension 並強制重新整理 LINE OA 頁面。
-
-## 本版本不包含
-
-- 帳號登入與帳號綁定
-- 免費額度及付費方案
-- 知識庫管理介面（資料由 MLM Repository 維護）
-- CRM
+- 登入與帳號綁定
+- 免費額度與付費方案
+- 正式生成式 AI API
 - 自動回覆或自動發送 LINE 訊息
+- 手機版支援
+
+## 操作截圖
+
+> 預留：v1.4 客戶摘要、快速操作與建議結果卡片截圖。
+
+## 測試
+
+完整人工驗收請參閱 [docs/v1.5-test-checklist.md](docs/v1.5-test-checklist.md)。
 
 ## 已知限制
 
-- 正式後端尚未設定，預設只提供 Mock 建議。
-- LINE OA DOM 並非穩定公開 API，網站更新後偵測策略可能需要調整。
-- 只使用目前已渲染的最近可見文字訊息，不主動捲動或載入歷史訊息。
-- low confidence 訊息只有在沒有更可靠訊息時才會帶入。
-- v1.3 僅支援桌面版 Chrome。
+- LINE OA DOM 更新後，聊天室 selector 與評分策略可能需要調整。
+- 只讀取目前已渲染、可見的文字訊息，不主動捲動。
+- MLM 本機模式是知識庫檢索式建議，不是生成式 AI 改寫。
+- 正式生成式 AI API尚未配置。
+- MLM Worker 必須先部署 v1.5 客戶端點，Extension 的 K 點登入才會生效。
 
-## 下一版本規劃
+## 下一步建議
 
-- v1.4：登入與帳號綁定
-- v1.5：免費額度與方案權限
-- v2.0：企業知識庫與 AI RAG
+在自有後端建立 `/api/copilot/suggest`，先檢索 MLM 知識，再由後端 AI 產生有引用依據的客服草稿；Extension 維持只顯示建議與人工複製，不持有 AI Provider Key。
