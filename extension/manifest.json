@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LINE COPILOT",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "LINE OA 客服操作面板：客戶摘要、快速操作與人工確認的建議回覆。",
   "background": {
     "service_worker": "background.js"

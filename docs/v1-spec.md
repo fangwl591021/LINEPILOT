@@ -106,13 +106,13 @@ LINE COPILOT 是 LINE OA 人工客服的右側操作面板。v1.4 專注 UI、UX
 ## Manifest
 
 - `manifest_version`: 3
-- `version`: 1.4.0
+- `version`: 1.4.1
 - Script order：`config.js`、`api-client.js`、`ai-suggestion.js`、`copilot-panel.js`、`content.js`
 - 僅保留 MLM raw knowledge 所需 host permission。
 
 ## 測試
 
-自動測試覆蓋第一屏、快捷指令、Mock 結果、複製、兩種結果調整、清除、切換聊天室、無聊天室、狀態保持、折疊資訊、長結果捲動、單一面板與 LINE 原生 UI 不受影響。
+自動測試覆蓋第一屏、快捷指令、Mock 結果、複製、兩種結果調整、清除、切換聊天室、無聊天室、狀態保持、折疊資訊、長結果捲動、單一面板與 LINE 原生 UI 不受影響。v1.4.1 另加入側欄／全螢幕切換與 Esc 返回；切換僅變更 Extension 根節點 class，不重建內容。
 
 人工清單見 [v1.4-test-checklist.md](v1.4-test-checklist.md)。
 

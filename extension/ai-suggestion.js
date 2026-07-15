@@ -86,7 +86,7 @@
   function validateQuestion(question) { if (!question) return "請先輸入問題"; if (question.length < 2) return "問題至少需要 2 個字元"; if (question.length > MAX_QUESTION_LENGTH) return "問題最多 2000 個字元"; return ""; }
   function buildPayload(question) {
     const context = getSelectedContext();
-    return { question, contactName: copilotState.currentChat.contactName || null, conversationId: copilotState.currentChat.conversationId || null, currentUrl: copilotState.currentChat.currentUrl || globalThis.location.href, visibleMessages: context, source: "chrome-extension", extensionVersion: "1.4.0", instructions: { language: "zh-TW", replyMode: "suggestion-only", mustBeReviewedByHuman: true, doNotAutoSend: true } };
+    return { question, contactName: copilotState.currentChat.contactName || null, conversationId: copilotState.currentChat.conversationId || null, currentUrl: copilotState.currentChat.currentUrl || globalThis.location.href, visibleMessages: context, source: "chrome-extension", extensionVersion: "1.4.1", instructions: { language: "zh-TW", replyMode: "suggestion-only", mustBeReviewedByHuman: true, doNotAutoSend: true } };
   }
   function formatCreatedAt(value) { const date = new Date(value); return Number.isNaN(date.getTime()) ? String(value || "—") : date.toLocaleString("zh-TW"); }
   function renderDebug(payload, response = null) {

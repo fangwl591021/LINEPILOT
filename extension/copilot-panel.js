@@ -92,7 +92,7 @@
       <section class="line-copilot-panel">
         <header class="line-copilot-header">
           <div class="line-copilot-heading-group"><span class="line-copilot-brand-mark" aria-hidden="true">LC</span><div class="line-copilot-heading-copy"><h1 class="line-copilot-title">LINE COPILOT</h1><span class="line-copilot-subtitle">AI 客服助手</span></div></div>
-          <button id="line-copilot-collapse-button" class="line-copilot-icon-button" type="button" aria-label="收合 LINE COPILOT 面板" title="收合面板">›</button>
+          <div class="line-copilot-header-actions"><button id="line-copilot-fullscreen-button" class="line-copilot-icon-button line-copilot-fullscreen-button" type="button" aria-label="切換為全螢幕" title="全螢幕" aria-pressed="false">⛶</button><button id="line-copilot-collapse-button" class="line-copilot-icon-button" type="button" aria-label="收合 LINE COPILOT 面板" title="收合面板">›</button></div>
         </header>
         <main class="line-copilot-content">
           <section id="line-copilot-customer-summary" class="line-copilot-customer-summary" aria-labelledby="line-copilot-summary-name">
@@ -106,14 +106,28 @@
           ${createCustomerInfoMarkup()}
           ${createDebugMarkup()}
         </main>
-        <footer class="line-copilot-footer"><button id="line-copilot-privacy-toggle" class="line-copilot-footer-link" type="button" aria-expanded="false">隱私說明</button><span class="line-copilot-footer-separator">·</span><button id="line-copilot-footer-debug" class="line-copilot-footer-link" type="button">開發與偵錯</button><span class="line-copilot-footer-separator">·</span><span class="line-copilot-version">v1.4.0</span><p id="line-copilot-privacy-note" class="line-copilot-privacy" hidden>MLM 知識庫在瀏覽器本機比對；不自動傳送任何 LINE 訊息。</p></footer>
+        <footer class="line-copilot-footer"><button id="line-copilot-privacy-toggle" class="line-copilot-footer-link" type="button" aria-expanded="false">隱私說明</button><span class="line-copilot-footer-separator">·</span><button id="line-copilot-footer-debug" class="line-copilot-footer-link" type="button">開發與偵錯</button><span class="line-copilot-footer-separator">·</span><span class="line-copilot-version">v1.4.1</span><p id="line-copilot-privacy-note" class="line-copilot-privacy" hidden>MLM 知識庫在瀏覽器本機比對；不自動傳送任何 LINE 訊息。</p></footer>
       </section>`;
     return root;
   }
 
   function setCollapsed(root, collapsed) {
+    if (!root) return;
+    if (collapsed && root.classList.contains("line-copilot-fullscreen")) setFullscreen(root, false);
     root.classList.toggle("line-copilot-collapsed", collapsed);
     root.setAttribute("aria-expanded", String(!collapsed));
+  }
+
+  function setFullscreen(root, fullscreen) {
+    if (!root) return;
+    if (fullscreen) setCollapsed(root, false);
+    root.classList.toggle("line-copilot-fullscreen", fullscreen);
+    const button = get(root, "line-copilot-fullscreen-button");
+    if (!button) return;
+    button.setAttribute("aria-pressed", String(fullscreen));
+    button.setAttribute("aria-label", fullscreen ? "返回側欄" : "切換為全螢幕");
+    button.title = fullscreen ? "返回側欄" : "全螢幕";
+    button.textContent = fullscreen ? "↙" : "⛶";
   }
 
   function init(root, callbacks = {}) {
@@ -121,6 +135,15 @@
     root.dataset.lineCopilotPanelInitialized = "true";
     get(root, "line-copilot-collapse-button")?.addEventListener("click", () => setCollapsed(root, true));
     get(root, "line-copilot-expand-button")?.addEventListener("click", () => setCollapsed(root, false));
+    get(root, "line-copilot-fullscreen-button")?.addEventListener("click", () => setFullscreen(root, !root.classList.contains("line-copilot-fullscreen")));
+    if (!globalThis.__LINE_COPILOT_FULLSCREEN_ESCAPE_BOUND__) {
+      globalThis.__LINE_COPILOT_FULLSCREEN_ESCAPE_BOUND__ = true;
+      document.addEventListener("keydown", (event) => {
+        if (event.key !== "Escape") return;
+        const activeRoot = document.getElementById("line-copilot-root");
+        if (activeRoot?.classList.contains("line-copilot-fullscreen")) setFullscreen(activeRoot, false);
+      });
+    }
     get(root, "line-copilot-export-report")?.addEventListener("click", callbacks.copyDiagnosticReport);
     get(root, "line-copilot-copy-header-report")?.addEventListener("click", callbacks.copyHeaderReport);
     get(root, "line-copilot-footer-debug")?.addEventListener("click", () => {
@@ -156,5 +179,5 @@
     setText(root, "line-copilot-info-message-count", String(messages.length), "0");
   }
 
-  globalThis.LINE_COPILOT_PANEL = Object.freeze({ createPanelElement, init, updateChatState, setCollapsed });
+  globalThis.LINE_COPILOT_PANEL = Object.freeze({ createPanelElement, init, updateChatState, setCollapsed, setFullscreen });
 })();

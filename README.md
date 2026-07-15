@@ -6,9 +6,9 @@ LINE COPILOT 是顯示在 LINE Official Account Manager 右側的 Chrome Extensi
 
 ## 專案狀態
 
-- 版本：**1.4.0**
+- 版本：**1.4.1**
 - 技術：Manifest V3、原生 HTML／CSS／JavaScript
-- 面板寬度：400px
+- 面板寬度：側欄 400px；可切換全螢幕三欄工作台
 - 預設資料來源：MLM 公開知識庫，本機比對
 - 測試模式：保留 Mock API，不需要正式 AI API
 - 程式位置：`extension/`
@@ -27,6 +27,8 @@ LINE COPILOT 是顯示在 LINE Official Account Manager 右側的 Chrome Extensi
 8. 精簡底部操作
 
 第一屏優先顯示聊天對象、聊天室狀態、最近一則客戶訊息、上下文數量、快速操作、需求輸入框與「產生建議回覆」CTA。聊天室 ID、完整網址、selector、confidence、requestId、model 與 token usage 不出現在一般畫面。
+
+Header 的全螢幕按鈕可將側欄切換為三欄工作台：左欄顯示客戶摘要與次要資訊，中欄處理 AI 需求輸入，右欄顯示建議回覆；點擊返回按鈕或按 Esc 可回到 400px 側欄，輸入與結果狀態不會重建。
 
 ## 快速操作
 
@@ -121,7 +123,7 @@ config.js → api-client.js → ai-suggestion.js → copilot-panel.js → conten
 2. 開啟「開發人員模式」。
 3. 點擊「載入未封裝項目」。
 4. 選擇本專案的 `extension` 資料夾。
-5. 確認版本為 `1.4.0`。
+5. 確認版本為 `1.4.1`。
 6. 開啟 `https://manager.line.biz/` 並進入聊天頁面。
 
 更新程式後，先重新載入 Extension，再用 `Ctrl + Shift + R` 重新整理 LINE OA。
