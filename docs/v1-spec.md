@@ -96,7 +96,8 @@ LINE COPILOT 是 LINE OA 人工客服的右側操作面板。v1.4 專注 UI、UX
 
 ## 安全邊界
 
-- 不讀 Cookie、Token、localStorage 或 Authorization Header。
+- 不讀 LINE OA Cookie、LINE Token、localStorage 或既有 Authorization Header。
+- MLM 短效 Token 由客服主動登入取得，只存在目前分頁記憶體，重新整理即清除。
 - 不使用 Chrome Storage。
 - 不攔截 LINE OA request。
 - 不呼叫 Messaging、Push 或 Reply API。
@@ -106,9 +107,9 @@ LINE COPILOT 是 LINE OA 人工客服的右側操作面板。v1.4 專注 UI、UX
 ## Manifest
 
 - `manifest_version`: 3
-- `version`: 1.4.1
-- Script order：`config.js`、`api-client.js`、`ai-suggestion.js`、`copilot-panel.js`、`content.js`
-- 僅保留 MLM raw knowledge 所需 host permission。
+- `version`: 1.5.0
+- Script order：`config.js`、`api-client.js`、`customer-integration.js`、`ai-suggestion.js`、`copilot-panel.js`、`content.js`
+- Host permissions 僅包含 MLM raw knowledge 與 `mlm.fangwl591021.workers.dev` 客戶／K 點 API。
 
 ## 測試
 
@@ -133,3 +134,21 @@ LINE COPILOT 是 LINE OA 人工客服的右側操作面板。v1.4 專注 UI、UX
 - 登入、權限與使用額度。
 - 可管理的企業知識庫。
 - 回覆品質回饋與人工採用紀錄。
+
+## v1.5 客戶資料與 K 點整合
+
+- LINE UID：從 `chat.line.biz/.../chat/U...` 網址取得，僅接受 `U` 開頭的合理格式。
+- 頭貼：優先使用 MLM thread/profile 的 `pictureUrl`，否則使用聊天室 Header 中與名稱最近的可見 HTTPS 圖片。
+- MLM 登入：`POST /api/auth/extension-login`，成功後回傳 HMAC 簽章、8 小時有效的 `lcx1` Token。
+- 客戶摘要：`GET /api/copilot/customer` 僅回傳目前 UID、姓名、頭貼、狀態、K 點餘額與解析結果，不回傳聊天歷史或同名候選明細。
+- K 點異動：沿用 `/admin/points/grant` 與 `/admin/points/deduct`；Token、客服樓層權限、來源 UID 與既有 Worker 規則都必須通過。
+- 康立全球不可贈點；未對應會員、數量無效、未填原因或未通過確認時不送出。
+- Extension background 僅代理白名單端點，不允許任意 MLM URL。
+
+## v1.5 隱私與安全
+
+- 不把帳號密碼、Token、K 點資料寫入 localStorage、Chrome Storage 或後端診斷報告。
+- 密碼只用於一次登入 request，成功後立即清空輸入框。
+- Token 不輸出到 Console，也不放入頁面 DOM。
+- 不讀取或轉送 LINE OA Cookie、access token、Authorization header。
+- K 點異動由客服人工觸發並再次確認，不會因聊天室切換自動執行。

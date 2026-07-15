@@ -454,6 +454,29 @@
     return Number.isFinite(nearest) ? Math.round(nearest) : null;
   }
 
+  function lineCopilotAvatarImageUrl(element) {
+    if (!(element instanceof Element)) return "";
+    const image = element.matches("img") ? element : element.querySelector("img");
+    const direct = image?.currentSrc || image?.src || image?.getAttribute("src") || "";
+    if (/^https:\/\//i.test(direct)) return direct;
+    const background = window.getComputedStyle(element).backgroundImage || "";
+    const match = background.match(/url\(["']?(https:\/\/[^"')]+)["']?\)/i);
+    return match ? match[1] : "";
+  }
+
+  function lineCopilotFindAvatarUrlForElement(element, avatars) {
+    if (!(element instanceof Element)) return "";
+    const rect = element.getBoundingClientRect();
+    const candidates = (avatars || []).map((avatar) => {
+      const avatarRect = avatar.getBoundingClientRect();
+      const vertical = Math.abs((rect.top + rect.height / 2) - (avatarRect.top + avatarRect.height / 2));
+      const horizontal = rect.left - avatarRect.right;
+      const url = lineCopilotAvatarImageUrl(avatar);
+      return { url, vertical, horizontal, distance: Math.hypot(Math.max(0, horizontal), vertical) };
+    }).filter((item) => item.url && item.vertical <= 70 && item.horizontal >= -35 && item.horizontal <= 190)
+      .sort((left, right) => left.distance - right.distance);
+    return candidates[0]?.url || "";
+  }
   function lineCopilotIsExcludedNameText(text) {
     if (!text) return true;
     if (LINE_COPILOT_DATE_PATTERN.test(text) || LINE_COPILOT_TIME_PATTERN.test(text)) return true;
@@ -728,7 +751,8 @@
             text,
             score: Math.round(score),
             evidence,
-            source
+            source,
+            element
           };
           const existing = byText.get(text);
           if (!existing || candidate.score > existing.score) byText.set(text, candidate);
@@ -752,6 +776,7 @@
             candidateCount: candidates.length,
             candidates: candidates.slice(0, 20),
             headerCandidates: headerScan.diagnosticRecords.map((record) => record.diagnostic),
+            avatarUrl: lineCopilotFindAvatarUrlForElement(headerSelected.element, headerScan.avatars),
             selectionReason: `選擇 ${headerSelected.source} 最高分 ${headerSelected.score}：${headerSelected.evidence.join("；")}`
           };
         }
@@ -1202,6 +1227,7 @@
         contactName: LINE_COPILOT_EMPTY_VALUE,
         contactNameSource: "unknown",
         contactNameConfidence: "low",
+        contactAvatarUrl: "",
         contactNameDetectedAt: LINE_COPILOT_EMPTY_VALUE,
         currentUrl,
         conversationId: LINE_COPILOT_EMPTY_VALUE,
@@ -1238,6 +1264,7 @@
       contactName: contactResult.value || LINE_COPILOT_EMPTY_VALUE,
       contactNameSource: contactResult.source || "unknown",
       contactNameConfidence: contactResult.confidence || "low",
+      contactAvatarUrl: contactResult.avatarUrl || "",
       contactNameDetectedAt,
       currentUrl,
       conversationId: conversationResult.value || LINE_COPILOT_EMPTY_VALUE,
@@ -1420,6 +1447,7 @@
     lineCopilotRenderRoleDiagnostics(state.messages);
     globalThis.LINE_COPILOT_PANEL?.updateChatState?.(document.getElementById(LINE_COPILOT_ROOT_ID), state);
     globalThis.LINE_COPILOT_AI?.updateChatState?.(state);
+    globalThis.LINE_COPILOT_CUSTOMER?.updateChatState?.(state);
   }
 
   function lineCopilotBuildDiagnosticReport(state) {
@@ -1506,6 +1534,7 @@
       copyHeaderReport: lineCopilotCopyHeaderDiagnosticReport
     });
     globalThis.LINE_COPILOT_AI?.init?.(root, () => lineCopilotRuntime.latestState);
+    globalThis.LINE_COPILOT_CUSTOMER?.init?.(root, () => lineCopilotRuntime.latestState);
     return root;
   }
 
@@ -1537,6 +1566,7 @@
       contactName: contactResult.value || LINE_COPILOT_EMPTY_VALUE,
       contactNameSource: contactResult.source || "unknown",
       contactNameConfidence: contactResult.confidence || "low",
+      contactAvatarUrl: contactResult.avatarUrl || "",
       contactNameDetectedAt,
       currentUrl: window.location.href,
       conversationId: conversationResult.value || LINE_COPILOT_EMPTY_VALUE,

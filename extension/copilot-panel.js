@@ -96,17 +96,18 @@
         </header>
         <main class="line-copilot-content">
           <section id="line-copilot-customer-summary" class="line-copilot-customer-summary" aria-labelledby="line-copilot-summary-name">
-            <div class="line-copilot-summary-top"><div><p class="line-copilot-summary-eyebrow">目前客戶</p><h2 id="line-copilot-summary-name" class="line-copilot-summary-name">偵測中</h2></div><span id="line-copilot-summary-status" class="line-copilot-summary-status">偵測中</span></div>
+            <div class="line-copilot-summary-top"><div class="line-copilot-summary-identity"><span class="line-copilot-summary-avatar-wrap"><img id="line-copilot-summary-avatar" class="line-copilot-summary-avatar" alt="LINE 客戶頭貼" referrerpolicy="no-referrer" hidden><span id="line-copilot-summary-avatar-fallback" class="line-copilot-summary-avatar-fallback" aria-hidden="true">客</span></span><div><p class="line-copilot-summary-eyebrow">目前客戶</p><h2 id="line-copilot-summary-name" class="line-copilot-summary-name">偵測中</h2><div class="line-copilot-summary-uid-row"><span>LINE UID</span><code id="line-copilot-summary-uid">尚未取得</code><button id="line-copilot-summary-copy-uid" class="line-copilot-ai-link-button" type="button">複製</button></div></div></div><span id="line-copilot-summary-status" class="line-copilot-summary-status">偵測中</span></div>
             <div class="line-copilot-summary-message"><span class="line-copilot-summary-label">最近一則客戶訊息</span><p id="line-copilot-summary-message" class="line-copilot-summary-message-text">尚未讀取到可用對話</p></div>
             <p id="line-copilot-summary-context" class="line-copilot-summary-context">正在讀取對話</p>
             <p id="line-copilot-summary-help" class="line-copilot-summary-help" hidden>請先在 LINE OA 左側選擇一位客戶，或直接輸入問題使用 AI 建議。</p>
           </section>
+          ${globalThis.LINE_COPILOT_CUSTOMER?.createSectionMarkup?.() || ""}
           ${createQuickActionsMarkup()}
           ${globalThis.LINE_COPILOT_AI?.createSectionMarkup?.() || ""}
           ${createCustomerInfoMarkup()}
           ${createDebugMarkup()}
         </main>
-        <footer class="line-copilot-footer"><button id="line-copilot-privacy-toggle" class="line-copilot-footer-link" type="button" aria-expanded="false">隱私說明</button><span class="line-copilot-footer-separator">·</span><button id="line-copilot-footer-debug" class="line-copilot-footer-link" type="button">開發與偵錯</button><span class="line-copilot-footer-separator">·</span><span class="line-copilot-version">v1.4.1</span><p id="line-copilot-privacy-note" class="line-copilot-privacy" hidden>MLM 知識庫在瀏覽器本機比對；不自動傳送任何 LINE 訊息。</p></footer>
+        <footer class="line-copilot-footer"><button id="line-copilot-privacy-toggle" class="line-copilot-footer-link" type="button" aria-expanded="false">隱私說明</button><span class="line-copilot-footer-separator">·</span><button id="line-copilot-footer-debug" class="line-copilot-footer-link" type="button">開發與偵錯</button><span class="line-copilot-footer-separator">·</span><span class="line-copilot-version">v1.5.0</span><p id="line-copilot-privacy-note" class="line-copilot-privacy" hidden>MLM 知識庫在瀏覽器本機比對；不自動傳送任何 LINE 訊息。</p></footer>
       </section>`;
     return root;
   }

@@ -1,12 +1,12 @@
 # LINE COPILOT
 
-LINE COPILOT 是顯示在 LINE Official Account Manager 右側的 Chrome Extension 客服輔助面板。v1.4 將原本偏工程測試的畫面重構為客服操作介面，讓客服先看到客戶、最近問題與主要操作，再按需展開技術資訊。
+LINE COPILOT 是顯示在 LINE Official Account Manager 右側的 Chrome Extension 客服輔助面板。v1.5 在客服工作台加入客戶頭貼、LINE UID 與經 MLM 短效授權的 K 點查詢／人工異動。
 
 建議回覆不會自動填入或送出 LINE。客服必須人工確認、複製並手動貼到 LINE OA。
 
 ## 專案狀態
 
-- 版本：**1.4.1**
+- 版本：**1.5.0**
 - 技術：Manifest V3、原生 HTML／CSS／JavaScript
 - 面板寬度：側欄 400px；可切換全螢幕三欄工作台
 - 預設資料來源：MLM 公開知識庫，本機比對
@@ -30,6 +30,16 @@ LINE COPILOT 是顯示在 LINE Official Account Manager 右側的 Chrome Extensi
 
 Header 的全螢幕按鈕可將側欄切換為三欄工作台：左欄顯示客戶摘要與次要資訊，中欄處理 AI 需求輸入，右欄顯示建議回覆；點擊返回按鈕或按 Esc 可回到 400px 側欄，輸入與結果狀態不會重建。
 
+## v1.5 客戶資料與 K 點
+
+- 從 LINE OA 聊天室 Header 取得目前客戶頭貼，MLM API 的 `pictureUrl` 可作為較穩定來源。
+- 將網址中的 `U...` 聊天識別碼標示為 LINE UID，提供一鍵複製。
+- 客服使用既有 MLM 帳號登入後，由 Worker 簽發 8 小時短效 Token。
+- Token 只保留在目前分頁的記憶體，不寫入 localStorage、Chrome Storage 或 Extension 原始碼。
+- 依 LINE UID 讀取康立智能／康立全球 K 點餘額與母站 UID 對應結果。
+- 康立智能可贈扣；康立全球維持只能扣點。
+- UID 尚未可靠對應母站會員時，面板只顯示狀態並禁止贈扣。
+- 每次異動必須填寫原因並通過人工確認；操作仍由 MLM Worker 驗證與記錄。
 ## 快速操作
 
 提供以下小型快捷按鈕：
@@ -66,7 +76,7 @@ Header 的全螢幕按鈕可將側欄切換為三欄工作台：左欄顯示客�
 - 聊天室是否開啟
 - 最近訊息數量
 - 最後偵測時間
-- 聊天室 ID
+- LINE UID（原聊天室識別碼）
 - 目前網址
 - 偵測來源與信心程度
 
@@ -123,7 +133,7 @@ config.js → api-client.js → ai-suggestion.js → copilot-panel.js → conten
 2. 開啟「開發人員模式」。
 3. 點擊「載入未封裝項目」。
 4. 選擇本專案的 `extension` 資料夾。
-5. 確認版本為 `1.4.1`。
+5. 確認版本為 `1.5.0`。
 6. 開啟 `https://manager.line.biz/` 並進入聊天頁面。
 
 更新程式後，先重新載入 Extension，再用 `Ctrl + Shift + R` 重新整理 LINE OA。
@@ -135,18 +145,19 @@ config.js → api-client.js → ai-suggestion.js → copilot-panel.js → conten
 - `USE_MLM_KNOWLEDGE: true`：下載 MLM 公開知識庫，在瀏覽器本機比對。
 - `USE_MOCK_API: true`：供自動測試或沒有 Extension Runtime 的環境使用。
 - `API_BASE_URL: ""`：尚未配置正式 AI API。
+- `MLM_API_BASE_URL`：MLM 客戶資料與 K 點 API；實際呼叫由 background service worker 代理。
 
 Extension 不包含任何 AI API Key，也不直接呼叫 OpenAI、Gemini 或 LINE Messaging API。
 
 ## 安全與隱私
 
-- 不讀取 Cookie、LINE Token、localStorage 或 Authorization Header。
-- 不保存完整聊天紀錄，不使用 Chrome Storage。
+- 不讀取 LINE OA Cookie、LINE Token、localStorage 或既有 Authorization Header。
+- 不保存完整聊天紀錄，不使用 Chrome Storage；MLM 短效 Token 僅存在目前分頁記憶體。
 - 不修改 LINE OA 原生輸入框。
 - 不點擊 LINE OA 原生傳送按鈕。
 - 不使用 LINE Push API 或 Reply API。
 - 不自動發送任何訊息。
-- MLM 模式只下載公開知識庫，問題與聊天室文字在本機比對。
+- MLM 知識庫仍在本機比對；客戶與 K 點資料只在客服主動登入後，透過限定端點讀取。
 - 所有建議都必須由客服人工確認。
 
 ## 尚未包含
@@ -163,14 +174,15 @@ Extension 不包含任何 AI API Key，也不直接呼叫 OpenAI、Gemini 或 LI
 
 ## 測試
 
-完整人工驗收請參閱 [docs/v1.4-test-checklist.md](docs/v1.4-test-checklist.md)。
+完整人工驗收請參閱 [docs/v1.5-test-checklist.md](docs/v1.5-test-checklist.md)。
 
 ## 已知限制
 
 - LINE OA DOM 更新後，聊天室 selector 與評分策略可能需要調整。
 - 只讀取目前已渲染、可見的文字訊息，不主動捲動。
 - MLM 本機模式是知識庫檢索式建議，不是生成式 AI 改寫。
-- 正式 API 尚未配置。
+- 正式生成式 AI API尚未配置。
+- MLM Worker 必須先部署 v1.5 客戶端點，Extension 的 K 點登入才會生效。
 
 ## 下一步建議
 
