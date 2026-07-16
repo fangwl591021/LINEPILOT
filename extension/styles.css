@@ -413,3 +413,11 @@
   outline: 3px solid rgba(6, 199, 85, 0.3);
   outline-offset: 2px;
 }
+
+
+.line-copilot-debug-header-item {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+}

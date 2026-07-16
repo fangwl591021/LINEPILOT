@@ -61,3 +61,13 @@ LINE COPILOT 是在 LINE Official Account Manager 右側顯示的 Chrome Extensi
 - 訊息時間若不在同一訊息節點內，會顯示「尚未偵測到」。
 
 完整規格與策略請參閱 [docs/v1-spec.md](docs/v1-spec.md)。
+
+
+### Header 名稱診斷與備援
+
+- 聊天對象名稱優先由中央聊天室頂部 Header 的位置、字型、頭像距離與語意綜合評分，不依賴單一動態 class。
+- 支援合併同一候選父元素內分拆顯示的可見文字，例如 Tony 與 fang 合併為 Tonyfang。
+- 聊天室切換後於立即、300ms、800ms、1500ms、3000ms 重試，成功後停止後續重試。
+- Header 無可靠候選時，才使用左側已選取或高亮的聊天室主要名稱，來源標記為 selected-chat-list-item。
+- 偵錯區最多顯示 30 個 Header 候選元素，並可將不含 Cookie、Token 或 Storage 的 Header 診斷 JSON 複製到剪貼簿。
+- LINE OA DOM 或版面更新後，候選區域與評分門檻仍可能需要調整。

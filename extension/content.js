@@ -6,6 +6,7 @@
   const LINE_COPILOT_MONITOR_KEY = "__lineCopilotMonitor";
   const LINE_COPILOT_NAVIGATION_EVENT = "line-copilot-navigation";
   const LINE_COPILOT_DEBOUNCE_MS = 500;
+  const LINE_COPILOT_CONTACT_RETRY_DELAYS = [0, 300, 800, 1500, 3000];
   const LINE_COPILOT_EMPTY_VALUE = "尚未偵測到";
   const LINE_COPILOT_MESSAGE_LIMIT = 5;
   const LINE_COPILOT_TIME_PATTERN = /(?:上午|下午)?\s*(?:[01]?\d|2[0-3]):[0-5]\d/;
@@ -54,7 +55,9 @@
     lastDomUpdateAt: LINE_COPILOT_EMPTY_VALUE,
     pendingReason: "initial-load",
     latestState: null,
-    cachedStreamElement: null
+    cachedStreamElement: null,
+    contactRetryTimers: [],
+    lastSuccessfulContact: null
   };
 
   console.log("LINE COPILOT Loaded");
@@ -400,161 +403,398 @@
     return candidates[0] || { element: null, strategy: "header:not-found", score: 0 };
   }
 
-  function lineCopilotNearbyAvatarEvidence(element, nameRect) {
-    const avatars = Array.from(
+  function lineCopilotGetHeaderRegion(streamResult) {
+    const usableRight = lineCopilotGetUsableRightEdge();
+    const streamRect = streamResult?.rect || null;
+    return {
+      top: 0,
+      bottom: streamRect
+        ? Math.min(280, Math.max(120, streamRect.top + 20))
+        : Math.min(280, window.innerHeight * 0.34),
+      left: streamRect ? Math.max(0, streamRect.left - 160) : 0,
+      right: streamRect ? Math.min(usableRight, streamRect.right + 24) : usableRight,
+      streamTop: streamRect?.top ?? null
+    };
+  }
+
+  function lineCopilotGetVisibleAvatars(region) {
+    return Array.from(
       document.querySelectorAll(
         "img,[data-testid*='avatar' i],[class*='avatar' i],[class*='profile-image' i],[class*='user-image' i]"
       )
-    ).slice(0, 500);
-    for (const avatar of avatars) {
-      if (!lineCopilotIsElementVisible(avatar)) continue;
-      const rect = avatar.getBoundingClientRect();
-      const horizontalGap = nameRect.left - rect.right;
-      const verticalDistance = Math.abs(
-        nameRect.top + nameRect.height / 2 - (rect.top + rect.height / 2)
+    )
+      .slice(0, 600)
+      .filter((element) => {
+        if (!lineCopilotIsElementVisible(element)) return false;
+        const rect = element.getBoundingClientRect();
+        return (
+          rect.width >= 18 &&
+          rect.width <= 110 &&
+          rect.height >= 18 &&
+          rect.height <= 110 &&
+          rect.bottom >= region.top - 20 &&
+          rect.top <= region.bottom + 80 &&
+          rect.right >= region.left - 40 &&
+          rect.left <= region.right + 40
+        );
+      });
+  }
+
+  function lineCopilotNearestAvatarDistance(rect, avatars) {
+    let nearest = Number.POSITIVE_INFINITY;
+    avatars.forEach((avatar) => {
+      const avatarRect = avatar.getBoundingClientRect();
+      const horizontal = rect.left - avatarRect.right;
+      const vertical = Math.abs(
+        rect.top + rect.height / 2 - (avatarRect.top + avatarRect.height / 2)
       );
-      if (
-        rect.width >= 18 &&
-        rect.width <= 96 &&
-        rect.height >= 18 &&
-        rect.height <= 96 &&
-        horizontalGap >= -8 &&
-        horizontalGap <= 170 &&
-        verticalDistance <= 48
-      ) {
-        return true;
-      }
+      if (horizontal < -30 || horizontal > 220 || vertical > 90) return;
+      nearest = Math.min(nearest, Math.hypot(Math.max(0, horizontal), vertical));
+    });
+    return Number.isFinite(nearest) ? Math.round(nearest) : null;
+  }
+
+  function lineCopilotIsExcludedNameText(text) {
+    if (!text) return true;
+    if (LINE_COPILOT_DATE_PATTERN.test(text) || LINE_COPILOT_TIME_PATTERN.test(text)) return true;
+    if (/^\d+$/.test(text) || /https?:\/\//i.test(text)) return true;
+    return /^(今天|昨天|日期|時間|待處理|處理完畢|搜尋|搜索|[「『]?自動回應訊息[」』]?(?:功能執行中)?|使用手動聊天|預約傳送|已讀|未讀|傳送|進階方案|輕用量|OA Plus|Help|LINE|LINE COPILOT)$/i.test(
+      text
+    );
+  }
+
+  function lineCopilotMergeVisibleNameText(element) {
+    if (
+      !(element instanceof Element) ||
+      element.closest("button,a,menu,[role='button'],[role='menu'],[role='toolbar']")
+    ) {
+      return { text: "", childTextCount: 0 };
     }
-    return false;
+
+    const directParts = Array.from(element.childNodes)
+      .filter((node) => node.nodeType === Node.TEXT_NODE)
+      .map((node) => lineCopilotNormalizeText(node.textContent))
+      .filter(Boolean);
+    const childParts = Array.from(element.children)
+      .filter(
+        (child) =>
+          lineCopilotIsElementVisible(child) &&
+          !child.matches(
+            "button,a,time,menu,[role='button'],[role='menu'],[role='toolbar'],[aria-hidden='true'],[class*='time' i],[class*='status' i],[class*='badge' i],[class*='unread' i]"
+          )
+      )
+      .map((child) => lineCopilotNormalizeText(child.innerText || child.textContent))
+      .filter(
+        (text) =>
+          text &&
+          !text.includes("\n") &&
+          text.length <= 40 &&
+          !lineCopilotIsExcludedNameText(text)
+      );
+
+    const parts = [...directParts, ...childParts];
+    if (parts.length) {
+      return {
+        text: lineCopilotNormalizeText(parts.join("")),
+        childTextCount: childParts.length
+      };
+    }
+    const fallback = lineCopilotNormalizeText(
+      element.innerText || element.textContent || element.getAttribute("aria-label") || element.title
+    );
+    return { text: fallback, childTextCount: 0 };
+  }
+
+  function lineCopilotCollectHeaderDiagnostics(streamResult) {
+    const region = lineCopilotGetHeaderRegion(streamResult);
+    const avatars = lineCopilotGetVisibleAvatars(region);
+    const records = [];
+    Array.from(document.querySelectorAll("body *"))
+      .slice(0, 4000)
+      .forEach((element) => {
+        if (!lineCopilotIsElementVisible(element)) return;
+        const rect = element.getBoundingClientRect();
+        const parent = element.parentElement;
+        if (
+          rect.bottom < region.top ||
+          rect.top > region.bottom ||
+          rect.left < region.left ||
+          rect.left > region.right ||
+          rect.height > 150
+        ) {
+          return;
+        }
+        const rawText = lineCopilotNormalizeText(element.innerText || element.textContent);
+        const ariaLabel = lineCopilotNormalizeText(element.getAttribute("aria-label"));
+        const title = lineCopilotNormalizeText(element.getAttribute("title"));
+        if (!rawText && !ariaLabel && !title) return;
+        const diagnostic = {
+          tagName: element.tagName.toLowerCase(),
+          innerText: rawText.slice(0, 240),
+          ariaLabel: ariaLabel.slice(0, 160),
+          title: title.slice(0, 160),
+          role: element.getAttribute("role") || null,
+          className:
+            typeof element.className === "string" ? element.className.slice(0, 240) : "",
+          boundingClientRect: {
+            top: Math.round(rect.top),
+            right: Math.round(rect.right),
+            bottom: Math.round(rect.bottom),
+            left: Math.round(rect.left),
+            width: Math.round(rect.width),
+            height: Math.round(rect.height)
+          },
+          parentTagName: parent?.tagName?.toLowerCase() || null,
+          parentClassName:
+            parent && typeof parent.className === "string"
+              ? parent.className.slice(0, 240)
+              : "",
+          visible: true,
+          topDistance: Math.round(rect.top - region.top),
+          avatarDistance: lineCopilotNearestAvatarDistance(rect, avatars)
+        };
+        records.push({ element, rect, diagnostic });
+      });
+
+    records.sort((left, right) => {
+      const vertical = left.rect.top - right.rect.top;
+      if (Math.abs(vertical) > 2) return vertical;
+      const areaLeft = left.rect.width * left.rect.height;
+      const areaRight = right.rect.width * right.rect.height;
+      return areaLeft - areaRight || left.rect.left - right.rect.left;
+    });
+    return { region, avatars, records: records.slice(0, 240), diagnosticRecords: records.slice(0, 30) };
+  }
+
+  function lineCopilotExtractSelectedListName(item, avatars) {
+    const itemRect = item.getBoundingClientRect();
+    const candidates = [];
+    Array.from(item.querySelectorAll("span,p,strong,b,div"))
+      .slice(0, 120)
+      .filter((element) => element.children.length <= 1 && lineCopilotIsElementVisible(element))
+      .forEach((element) => {
+        if (element.closest("button,a,time,[role='button'],[class*='time' i],[class*='badge' i],[class*='unread' i]")) return;
+        const { text } = lineCopilotMergeVisibleNameText(element);
+        if (
+          !text ||
+          text.length < 1 ||
+          text.length > 40 ||
+          text.includes("\n") ||
+          lineCopilotIsExcludedNameText(text)
+        ) {
+          return;
+        }
+        const rect = element.getBoundingClientRect();
+        const style = window.getComputedStyle(element);
+        const fontSize = Number.parseFloat(style.fontSize || "0");
+        const fontWeight = Number.parseInt(style.fontWeight || "400", 10) || 400;
+        let score = fontSize * 2 + (fontWeight >= 600 ? 18 : 0);
+        if (rect.top <= itemRect.top + itemRect.height * 0.58) score += 18;
+        if (/(name|title|contact|user)/.test(lineCopilotGetSignal(element, item))) score += 18;
+        const avatarDistance = lineCopilotNearestAvatarDistance(rect, avatars);
+        if (avatarDistance !== null && avatarDistance <= 150) score += 16;
+        candidates.push({ text, score, rect });
+      });
+    candidates.sort((left, right) => right.score - left.score || left.rect.top - right.rect.top);
+    return candidates[0] || null;
+  }
+
+  function lineCopilotDetectSelectedChatListName(streamResult) {
+    const streamRect = streamResult?.rect || null;
+    const usableRight = lineCopilotGetUsableRightEdge();
+    const chatLeft = streamRect?.left ?? usableRight * 0.48;
+    if (chatLeft < 180) return null;
+    const region = { top: 60, bottom: window.innerHeight, left: 0, right: chatLeft + 80 };
+    const avatars = lineCopilotGetVisibleAvatars(region);
+    const items = [];
+    Array.from(
+      document.querySelectorAll(
+        "[aria-selected='true'],[aria-current],li,[role='listitem'],[class*='selected' i],[class*='active' i],div"
+      )
+    )
+      .slice(0, 3000)
+      .forEach((element) => {
+        if (!lineCopilotIsElementVisible(element) || element.closest("nav[aria-label*='main' i],header,footer,form")) return;
+        const rect = element.getBoundingClientRect();
+        if (
+          rect.left < 0 ||
+          rect.right > chatLeft + 80 ||
+          rect.top < 60 ||
+          rect.width < 120 ||
+          rect.height < 36 ||
+          rect.height > 180
+        ) {
+          return;
+        }
+        const signal = lineCopilotGetSignal(element);
+        const style = window.getComputedStyle(element);
+        const parentStyle = element.parentElement
+          ? window.getComputedStyle(element.parentElement)
+          : null;
+        let itemScore = 0;
+        if (element.getAttribute("aria-selected") === "true") itemScore += 70;
+        if (element.hasAttribute("aria-current")) itemScore += 65;
+        if (/(selected|active|current|focused|highlight)/.test(signal)) itemScore += 40;
+        if (
+          parentStyle &&
+          style.backgroundColor !== "rgba(0, 0, 0, 0)" &&
+          style.backgroundColor !== "transparent" &&
+          style.backgroundColor !== parentStyle.backgroundColor
+        ) {
+          itemScore += 24;
+        }
+        if (itemScore < 24) return;
+        const name = lineCopilotExtractSelectedListName(element, avatars);
+        if (!name) return;
+        items.push({ element, name, itemScore, totalScore: itemScore + name.score });
+      });
+    items.sort((left, right) => right.totalScore - left.totalScore);
+    const selected = items[0];
+    if (!selected || selected.totalScore < 70) return null;
+    return {
+      value: selected.name.text,
+      source: "selected-chat-list-item",
+      confidence: selected.totalScore >= 120 ? "medium" : "low",
+      score: Math.round(selected.totalScore),
+      evidence: ["左側聊天室項目具有選取／高亮證據", "主要名稱文字分數最高"]
+    };
   }
 
   function detectContactName(streamResult) {
     return lineCopilotSafeRun(
       "contact name detection",
       () => {
-        const usableRight = lineCopilotGetUsableRightEdge();
-        const headerResult = lineCopilotFindChatHeader(streamResult);
-        const candidates = [];
-        const seenElements = new Set();
-        const seenText = new Set();
-
-        const addCandidate = (element, strategy, baseScore) => {
+        const headerScan = lineCopilotCollectHeaderDiagnostics(streamResult);
+        const byText = new Map();
+        headerScan.records.forEach(({ element, rect, diagnostic }) => {
+          if (element.closest("button,a,menu,[role='button'],[role='menu'],[role='toolbar']")) return;
+          const { text, childTextCount } = lineCopilotMergeVisibleNameText(element);
           if (
-            seenElements.has(element) ||
-            !lineCopilotIsElementVisible(element) ||
-            element.closest("nav,aside,form,button,a,[role='button'],[role='toolbar']")
+            !text ||
+            text.length < 1 ||
+            text.length > 40 ||
+            text.includes("\n") ||
+            lineCopilotIsExcludedNameText(text)
           ) {
             return;
           }
-          seenElements.add(element);
-          const { raw, normalized: text } = lineCopilotDirectText(element);
-          if (!lineCopilotIsPlausibleContactName(raw, text) || seenText.has(text)) return;
-
-          const rect = element.getBoundingClientRect();
-          if (
-            rect.top < 20 ||
-            rect.bottom > 175 ||
-            rect.left < 10 ||
-            rect.right > usableRight + 2
-          ) {
-            return;
-          }
-
           const style = window.getComputedStyle(element);
           const fontSize = Number.parseFloat(style.fontSize || "0");
-          const fontWeight = Number.parseInt(style.fontWeight || "400", 10) || 400;
           const signal = lineCopilotGetSignal(element);
-          const isInsideHeader =
-            headerResult.element?.contains(element) || element === headerResult.element;
-          const hasHeadingOrNameSignal =
-            element.matches("h1,h2,h3,[role='heading']") ||
-            /(contact|profile|user|friend|member|name|title)/.test(signal);
-          const hasNearbyAvatar = lineCopilotNearbyAvatarEvidence(element, rect);
-          if (!isInsideHeader && !hasHeadingOrNameSignal && !hasNearbyAvatar) return;
-          seenText.add(text);
-
-          const evidence = [];
-          let score = baseScore;
-          if (isInsideHeader) {
-            score += 38;
-            evidence.push("位於聊天室 header");
-          } else {
-            evidence.push("位於中央聊天室頂部候選區");
-          }
-          if (rect.top >= 25 && rect.top <= 120) {
+          const avatarDistance = diagnostic.avatarDistance;
+          const streamGap =
+            headerScan.region.streamTop === null
+              ? null
+              : Math.round(headerScan.region.streamTop - rect.bottom);
+          const isNearAvatar = avatarDistance !== null && avatarDistance <= 180;
+          const isNearStreamTop = streamGap !== null && streamGap >= -30 && streamGap <= 80;
+          const hasNameSemantics = /(name|title|contact|profile|user|friend|member)/.test(signal);
+          if (!isNearAvatar && !hasNameSemantics) return;
+          const evidence = ["位於中央聊天室頂部診斷區域"];
+          let score = 32;
+          if (headerScan.region.streamTop !== null && rect.bottom <= headerScan.region.streamTop + 20) {
             score += 24;
-            evidence.push("位於主要 header 高度帶");
+            evidence.push("位於訊息列表上方");
           }
-          if (element.matches("h1,h2,h3,[role='heading']")) {
-            score += 22;
-            evidence.push("具 heading 語意");
+          if (isNearAvatar) {
+            score += 32;
+            evidence.push(`鄰近圓形頭像 ${avatarDistance}px`);
+            if (avatarDistance <= 90) score += 12;
           }
-          if (/(contact|profile|user|friend|member|name|title)/.test(signal)) {
-            score += 18;
-            evidence.push("具有 name/profile 屬性訊號");
+          if (isNearStreamTop) {
+            evidence.push(`距離訊息串上緣 ${streamGap}px`);
           }
           if (fontSize >= 18) {
-            score += 20;
+            score += 18;
             evidence.push(`字型 ${fontSize}px`);
-          } else if (fontSize >= 15) {
+          } else if (fontSize >= 14) {
+            score += 9;
+            evidence.push(`字型 ${fontSize}px`);
+          }
+          if (element.matches("h1,h2,h3,[role='heading']")) {
+            score += 18;
+            evidence.push("具 heading 語意");
+          }
+          if (hasNameSemantics) {
+            score += 16;
+            evidence.push("具名稱語意");
+          }
+          if (childTextCount >= 2) {
             score += 10;
-            evidence.push(`字型 ${fontSize}px`);
+            evidence.push("合併多個可見子元素文字");
           }
-          if (fontWeight >= 600) {
-            score += 7;
-            evidence.push("字重較高");
-          }
-          if (hasNearbyAvatar) {
-            score += 36;
-            evidence.push("左側鄰近聊天室頭像");
-          }
-          if (element.parentElement && /flex/.test(window.getComputedStyle(element.parentElement).display)) {
-            score += 6;
-            evidence.push("父層為 flex 結構");
-          }
-          if (text.length <= 30) score += 5;
-          candidates.push({ text, score: Math.round(score), evidence, strategy });
-        };
+          const source = childTextCount >= 2 ? "header-parent" : "header";
+          const candidate = {
+            text,
+            score: Math.round(score),
+            evidence,
+            source
+          };
+          const existing = byText.get(text);
+          if (!existing || candidate.score > existing.score) byText.set(text, candidate);
+        });
 
-        if (headerResult.element) {
-          [
-            headerResult.element,
-            ...headerResult.element.querySelectorAll(
-              "h1,h2,h3,[role='heading'],[data-testid*='name' i],[class*='name' i],[class*='title' i],span,div"
-            )
-          ].slice(0, 500).forEach((element) => addCandidate(element, "name:header", 25));
+        const candidates = Array.from(byText.values()).sort(
+          (left, right) => right.score - left.score
+        );
+        const headerSelected = candidates[0]?.score >= 70 ? candidates[0] : null;
+        if (headerSelected) {
+          return {
+            value: headerSelected.text,
+            source: headerSelected.source,
+            confidence:
+              headerSelected.score >= 105
+                ? "high"
+                : headerSelected.score >= 82
+                  ? "medium"
+                  : "low",
+            strategy: headerSelected.source,
+            candidateCount: candidates.length,
+            candidates: candidates.slice(0, 20),
+            headerCandidates: headerScan.diagnosticRecords.map((record) => record.diagnostic),
+            selectionReason: `選擇 ${headerSelected.source} 最高分 ${headerSelected.score}：${headerSelected.evidence.join("；")}`
+          };
         }
 
-        Array.from(
-          document.querySelectorAll(
-            "h1,h2,h3,[role='heading'],[data-testid*='name' i],[data-testid*='title' i],[class*='name' i],[class*='title' i],[aria-label],[title]"
-          )
-        ).slice(0, 900).forEach((element) => addCandidate(element, "name:semantic-top-region", 20));
-
-        if (!candidates.some((candidate) => candidate.score >= 80)) {
-          Array.from(document.querySelectorAll("body p,body span,body strong,body div"))
-            .slice(0, 2500)
-            .filter((element) => element.children.length <= 1)
-            .forEach((element) => addCandidate(element, "name:avatar-geometry-fallback", 12));
+        const listFallback = lineCopilotDetectSelectedChatListName(streamResult);
+        if (listFallback) {
+          candidates.push({
+            text: listFallback.value,
+            score: listFallback.score,
+            evidence: listFallback.evidence,
+            source: listFallback.source
+          });
+          return {
+            value: listFallback.value,
+            source: listFallback.source,
+            confidence: listFallback.confidence,
+            strategy: listFallback.source,
+            candidateCount: candidates.length,
+            candidates: candidates.slice(0, 20),
+            headerCandidates: headerScan.diagnosticRecords.map((record) => record.diagnostic),
+            selectionReason: `Header 未達門檻，使用左側選中聊天室項目（${listFallback.score} 分）`
+          };
         }
 
-        candidates.sort((left, right) => right.score - left.score);
-        const selected = candidates[0]?.score >= 70 ? candidates[0] : null;
         return {
-          value: selected?.text || null,
-          strategy: selected?.strategy || "name:low-confidence",
+          value: null,
+          source: "unknown",
+          confidence: "low",
+          strategy: "unknown",
           candidateCount: candidates.length,
-          candidates: candidates.slice(0, 12),
-          selectionReason: selected
-            ? `選擇最高分 ${selected.score}：${selected.evidence.join("；")}`
-            : "聊天室頂部名稱候選分數低於 70，寧可不猜測"
+          candidates: candidates.slice(0, 20),
+          headerCandidates: headerScan.diagnosticRecords.map((record) => record.diagnostic),
+          selectionReason: "Header 與左側選中聊天室項目皆無可靠名稱，寧可不猜測"
         };
       },
       {
         value: null,
-        strategy: "name:error",
+        source: "unknown",
+        confidence: "low",
+        strategy: "unknown",
         candidateCount: 0,
         candidates: [],
+        headerCandidates: [],
         selectionReason: "名稱偵測發生錯誤"
       }
     );
@@ -940,6 +1180,18 @@
     );
   }
 
+  function lineCopilotRecordSuccessfulContact(contactResult, conversationId, detectedAt) {
+    if (!contactResult?.value) return LINE_COPILOT_EMPTY_VALUE;
+    lineCopilotRuntime.lastSuccessfulContact = {
+      conversationId: conversationId || null,
+      name: contactResult.value,
+      source: contactResult.source,
+      confidence: contactResult.confidence,
+      at: detectedAt
+    };
+    return detectedAt;
+  }
+
   function detectChatState() {
     const detectedAt = lineCopilotFormatTimestamp();
     const currentUrl = window.location.href;
@@ -948,11 +1200,15 @@
       return {
         isOpen: false,
         contactName: LINE_COPILOT_EMPTY_VALUE,
+        contactNameSource: "unknown",
+        contactNameConfidence: "low",
+        contactNameDetectedAt: LINE_COPILOT_EMPTY_VALUE,
         currentUrl,
         conversationId: LINE_COPILOT_EMPTY_VALUE,
         detectedAt,
         messages: [],
         contactNameCandidates: [],
+        headerCandidateElements: [],
         excludedCandidates: [],
         debug: {
           nameCandidateCount: 0,
@@ -972,14 +1228,23 @@
     const isOpen = Boolean(
       conversationResult.value || contactResult.value || messagesResult.messages.length
     );
+    const contactNameDetectedAt = lineCopilotRecordSuccessfulContact(
+      contactResult,
+      conversationResult.value,
+      detectedAt
+    );
     return {
       isOpen,
       contactName: contactResult.value || LINE_COPILOT_EMPTY_VALUE,
+      contactNameSource: contactResult.source || "unknown",
+      contactNameConfidence: contactResult.confidence || "low",
+      contactNameDetectedAt,
       currentUrl,
       conversationId: conversationResult.value || LINE_COPILOT_EMPTY_VALUE,
       detectedAt,
       messages: messagesResult.messages,
       contactNameCandidates: contactResult.candidates,
+      headerCandidateElements: contactResult.headerCandidates,
       excludedCandidates: messagesResult.excludedCandidates,
       debug: {
         nameCandidateCount: contactResult.candidateCount,
@@ -1062,7 +1327,27 @@
     candidates.forEach((candidate) => {
       const item = document.createElement("li");
       item.className = "line-copilot-debug-list-item";
-      item.textContent = `${candidate.text} — ${candidate.score} 分 — ${candidate.evidence.join("；")}`;
+      item.textContent = `${candidate.text} — ${candidate.score} 分 — ${candidate.source || "unknown"} — ${candidate.evidence.join("；")}`;
+      list.appendChild(item);
+    });
+  }
+
+  function lineCopilotRenderHeaderCandidates(candidates) {
+    const list = document.getElementById("line-copilot-debug-header-candidates");
+    if (!list) return;
+    list.replaceChildren();
+    const visibleCandidates = (candidates || []).slice(0, 30);
+    if (!visibleCandidates.length) {
+      const item = document.createElement("li");
+      item.className = "line-copilot-debug-empty";
+      item.textContent = LINE_COPILOT_EMPTY_VALUE;
+      list.appendChild(item);
+      return;
+    }
+    visibleCandidates.forEach((candidate) => {
+      const item = document.createElement("li");
+      item.className = "line-copilot-debug-list-item line-copilot-debug-header-item";
+      item.textContent = JSON.stringify(candidate, null, 2);
       list.appendChild(item);
     });
   }
@@ -1116,6 +1401,9 @@
     );
     lineCopilotSetText("line-copilot-chat-open", state.isOpen ? "是" : LINE_COPILOT_EMPTY_VALUE);
     lineCopilotSetText("line-copilot-contact-name", state.contactName);
+    lineCopilotSetText("line-copilot-contact-source", state.contactNameSource);
+    lineCopilotSetText("line-copilot-contact-confidence", state.contactNameConfidence);
+    lineCopilotSetText("line-copilot-contact-success-time", state.contactNameDetectedAt);
     lineCopilotSetText("line-copilot-current-url", state.currentUrl);
     lineCopilotSetText("line-copilot-conversation-id", state.conversationId);
     lineCopilotSetText("line-copilot-detected-at", state.detectedAt);
@@ -1127,6 +1415,7 @@
     lineCopilotSetText("line-copilot-debug-dom-time", state.debug.lastDomUpdateAt);
     lineCopilotRenderMessages(state.messages);
     lineCopilotRenderNameCandidates(state.contactNameCandidates);
+    lineCopilotRenderHeaderCandidates(state.headerCandidateElements);
     lineCopilotRenderExcludedCandidates(state.excludedCandidates);
     lineCopilotRenderRoleDiagnostics(state.messages);
   }
@@ -1175,6 +1464,38 @@
     }
   }
 
+  function lineCopilotBuildHeaderDiagnosticReport(state) {
+    return {
+      url: state?.currentUrl || window.location.href,
+      conversationId:
+        state?.conversationId && state.conversationId !== LINE_COPILOT_EMPTY_VALUE
+          ? state.conversationId
+          : null,
+      selectedName:
+        state?.contactName && state.contactName !== LINE_COPILOT_EMPTY_VALUE
+          ? state.contactName
+          : null,
+      selectedStrategy: state?.contactNameSource || "unknown",
+      candidates: (state?.headerCandidateElements || []).slice(0, 30).map((candidate) => ({
+        ...candidate,
+        boundingClientRect: { ...candidate.boundingClientRect }
+      })),
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  async function lineCopilotCopyHeaderDiagnosticReport() {
+    const result = document.getElementById("line-copilot-header-export-result");
+    try {
+      const report = lineCopilotBuildHeaderDiagnosticReport(lineCopilotRuntime.latestState);
+      await navigator.clipboard.writeText(JSON.stringify(report, null, 2));
+      if (result) result.textContent = "Header 診斷 JSON 已複製到剪貼簿";
+    } catch (error) {
+      console.warn("LINE COPILOT header diagnostic copy failed", error);
+      if (result) result.textContent = "無法複製 Header 診斷 JSON，請確認剪貼簿權限";
+    }
+  }
+
   function lineCopilotSetCollapsed(root, collapsed) {
     root.classList.toggle(LINE_COPILOT_COLLAPSED_CLASS, collapsed);
     root.setAttribute("aria-expanded", String(!collapsed));
@@ -1203,6 +1524,9 @@
             <dl class="line-copilot-detail-list">
               <div class="line-copilot-detail-row"><dt class="line-copilot-detail-label">已開啟</dt><dd id="line-copilot-chat-open" class="line-copilot-detail-value">偵測中</dd></div>
               <div class="line-copilot-detail-row"><dt class="line-copilot-detail-label">聊天對象</dt><dd id="line-copilot-contact-name" class="line-copilot-detail-value">偵測中</dd></div>
+              <div class="line-copilot-detail-row"><dt class="line-copilot-detail-label">偵測來源</dt><dd id="line-copilot-contact-source" class="line-copilot-detail-value line-copilot-detail-mono">unknown</dd></div>
+              <div class="line-copilot-detail-row"><dt class="line-copilot-detail-label">信心程度</dt><dd id="line-copilot-contact-confidence" class="line-copilot-detail-value">low</dd></div>
+              <div class="line-copilot-detail-row line-copilot-detail-row-stacked"><dt class="line-copilot-detail-label">最後成功偵測時間</dt><dd id="line-copilot-contact-success-time" class="line-copilot-detail-value">尚未偵測到</dd></div>
               <div class="line-copilot-detail-row"><dt class="line-copilot-detail-label">聊天室 ID</dt><dd id="line-copilot-conversation-id" class="line-copilot-detail-value line-copilot-detail-mono">偵測中</dd></div>
               <div class="line-copilot-detail-row line-copilot-detail-row-stacked"><dt class="line-copilot-detail-label">目前網址</dt><dd id="line-copilot-current-url" class="line-copilot-detail-value line-copilot-detail-mono">偵測中</dd></div>
               <div class="line-copilot-detail-row line-copilot-detail-row-stacked"><dt class="line-copilot-detail-label">最後偵測時間</dt><dd id="line-copilot-detected-at" class="line-copilot-detail-value">偵測中</dd></div>
@@ -1223,6 +1547,9 @@
               <div class="line-copilot-detail-row line-copilot-detail-row-stacked"><dt class="line-copilot-detail-label">偵測策略</dt><dd id="line-copilot-debug-strategy" class="line-copilot-detail-value line-copilot-detail-mono">尚未偵測到</dd></div>
               <div class="line-copilot-detail-row line-copilot-detail-row-stacked"><dt class="line-copilot-detail-label">最近 DOM 更新</dt><dd id="line-copilot-debug-dom-time" class="line-copilot-detail-value">尚未偵測到</dd></div>
             </dl>
+            <h3 class="line-copilot-debug-heading">聊天室 Header 候選元素</h3><ol id="line-copilot-debug-header-candidates" class="line-copilot-debug-list"><li class="line-copilot-debug-empty">尚未偵測到</li></ol>
+            <button id="line-copilot-copy-header-report" class="line-copilot-secondary-button" type="button">複製 Header 診斷 JSON</button>
+            <p id="line-copilot-header-export-result" class="line-copilot-debug-export-result" role="status" aria-live="polite"></p>
             <h3 class="line-copilot-debug-heading">名稱候選與評分</h3><ol id="line-copilot-debug-name-candidates" class="line-copilot-debug-list"><li class="line-copilot-debug-empty">尚未偵測到</li></ol>
             <h3 class="line-copilot-debug-heading">角色判斷依據</h3><ol id="line-copilot-debug-role-evidence" class="line-copilot-debug-list"><li class="line-copilot-debug-empty">尚未偵測到</li></ol>
             <h3 class="line-copilot-debug-heading">已排除候選</h3><ol id="line-copilot-debug-excluded" class="line-copilot-debug-list"><li class="line-copilot-debug-empty">尚未偵測到</li></ol>
@@ -1241,6 +1568,7 @@
     root.querySelector("#line-copilot-expand-button").addEventListener("click", () => lineCopilotSetCollapsed(root, false));
     root.querySelector("#line-copilot-test-button").addEventListener("click", () => lineCopilotSetText("line-copilot-test-result", "LINE COPILOT 測試成功"));
     root.querySelector("#line-copilot-export-report").addEventListener("click", lineCopilotCopyDiagnosticReport);
+    root.querySelector("#line-copilot-copy-header-report").addEventListener("click", lineCopilotCopyHeaderDiagnosticReport);
     root.querySelector("#line-copilot-debug-toggle").addEventListener("click", (event) => {
       const panel = root.querySelector("#line-copilot-debug-panel");
       const expanded = event.currentTarget.getAttribute("aria-expanded") === "true";
@@ -1261,10 +1589,83 @@
     return root;
   }
 
+  function lineCopilotCancelContactNameRetries() {
+    lineCopilotRuntime.contactRetryTimers.forEach((timerId) => window.clearTimeout(timerId));
+    lineCopilotRuntime.contactRetryTimers = [];
+  }
+
+  function lineCopilotApplyContactResult(baseState, contactResult, conversationResult, streamResult) {
+    const detectedAt = lineCopilotFormatTimestamp();
+    const contactNameDetectedAt = lineCopilotRecordSuccessfulContact(
+      contactResult,
+      conversationResult.value,
+      detectedAt
+    );
+    return {
+      ...baseState,
+      isOpen: Boolean(baseState.isOpen || conversationResult.value || contactResult.value),
+      contactName: contactResult.value || LINE_COPILOT_EMPTY_VALUE,
+      contactNameSource: contactResult.source || "unknown",
+      contactNameConfidence: contactResult.confidence || "low",
+      contactNameDetectedAt,
+      currentUrl: window.location.href,
+      conversationId: conversationResult.value || LINE_COPILOT_EMPTY_VALUE,
+      detectedAt,
+      contactNameCandidates: contactResult.candidates,
+      headerCandidateElements: contactResult.headerCandidates,
+      debug: {
+        ...baseState.debug,
+        nameCandidateCount: contactResult.candidateCount,
+        streamCandidateCount: streamResult.candidateCount,
+        strategy: `${conversationResult.strategy} / ${streamResult.strategy} / ${contactResult.strategy} / contact-name-retry`,
+        contactSelectionReason: contactResult.selectionReason,
+        lastDomUpdateAt: lineCopilotRuntime.lastDomUpdateAt
+      }
+    };
+  }
+
+  function lineCopilotRunContactNameDetection(reason) {
+    lineCopilotRuntime.pendingReason = reason;
+    if (!lineCopilotEnsurePanel()) return false;
+    const conversationResult = detectConversationId();
+    const streamResult = lineCopilotFindMessageStream();
+    const contactResult = detectContactName(streamResult);
+    const baseState =
+      lineCopilotRuntime.latestState?.currentUrl === window.location.href
+        ? lineCopilotRuntime.latestState
+        : detectChatState();
+    const state = lineCopilotApplyContactResult(
+      baseState,
+      contactResult,
+      conversationResult,
+      streamResult
+    );
+    updateCopilotPanel(state);
+    if (contactResult.value) lineCopilotCancelContactNameRetries();
+    return Boolean(contactResult.value);
+  }
+
+  function lineCopilotScheduleContactNameRetries(reason) {
+    lineCopilotCancelContactNameRetries();
+    const scheduledUrl = window.location.href;
+    LINE_COPILOT_CONTACT_RETRY_DELAYS.forEach((delay) => {
+      const timerId = window.setTimeout(() => {
+        if (window.location.href !== scheduledUrl) return;
+        lineCopilotRunContactNameDetection(`${reason}:${delay}ms`);
+      }, delay);
+      lineCopilotRuntime.contactRetryTimers.push(timerId);
+    });
+  }
+
   function lineCopilotRunDetection(reason) {
     lineCopilotRuntime.pendingReason = reason;
-    if (!lineCopilotEnsurePanel()) return;
-    updateCopilotPanel(detectChatState());
+    if (!lineCopilotEnsurePanel()) return null;
+    const state = detectChatState();
+    updateCopilotPanel(state);
+    if (state.contactName !== LINE_COPILOT_EMPTY_VALUE) {
+      lineCopilotCancelContactNameRetries();
+    }
+    return state;
   }
 
   function lineCopilotScheduleDetection(reason) {
@@ -1311,6 +1712,7 @@
 
     const navigationHandler = () => {
       lineCopilotRuntime.lastUrl = window.location.href;
+      lineCopilotScheduleContactNameRetries("navigation");
       lineCopilotScheduleDetection("navigation");
     };
     window.addEventListener(LINE_COPILOT_NAVIGATION_EVENT, navigationHandler);
@@ -1324,6 +1726,7 @@
       lineCopilotEnsurePanel();
       if (lineCopilotRuntime.lastUrl !== window.location.href) {
         lineCopilotRuntime.lastUrl = window.location.href;
+        lineCopilotScheduleContactNameRetries("url-poll");
         lineCopilotScheduleDetection("url-poll");
       }
     }, 1000);
@@ -1331,7 +1734,10 @@
   }
 
   lineCopilotEnsurePanel();
-  lineCopilotRunDetection("initial-load");
+  const lineCopilotInitialState = lineCopilotRunDetection("initial-load");
+  if (lineCopilotInitialState?.contactName === LINE_COPILOT_EMPTY_VALUE) {
+    lineCopilotScheduleContactNameRetries("initial-load");
+  }
   if (!window[LINE_COPILOT_MONITOR_KEY]) {
     window[LINE_COPILOT_MONITOR_KEY] = observeLinePageChanges();
   }
