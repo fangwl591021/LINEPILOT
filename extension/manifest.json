@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "LINEPILOT 免費版",
+  "version": "2.0.0",
+  "description": "免串接 LINE Messaging API：讀取目前聊天室並依個人知識庫提供回覆建議。",
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "LINEPILOT 免費版",
+    "default_popup": "popup.html"
+  },
+  "permissions": [
+    "storage"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://manager.line.biz/*",
+        "https://chat.line.biz/*"
+      ],
+      "js": [
+        "config.js",
+        "api-client.js",
+        "ai-suggestion.js",
+        "copilot-panel.js",
+        "content.js"
+      ],
+      "css": [
+        "styles.css",
+        "accuracy.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "host_permissions": [
+    "https://line-oa.fangwl591021.workers.dev/*"
+  ]
+}

@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>LINEPILOT</title>
+  <style>
+    *{box-sizing:border-box}body{width:360px;margin:0;padding:22px;color:#172033;background:#fff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    header{display:flex;align-items:center;gap:12px;padding-bottom:16px;border-bottom:1px solid #e8ebef}.mark{display:grid;place-items:center;width:42px;height:42px;border-radius:12px;background:#06c755;color:#fff;font-weight:900}.title{margin:0;font-size:20px}.version{margin:3px 0 0;color:#64748b;font-size:11px}.tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:18px 0}.tab{border:0;border-radius:8px;padding:10px;background:#f1f5f9;color:#64748b;font-weight:800;cursor:pointer}.tab.active{background:#f0fdf4;color:#06c755}.field{display:grid;gap:5px;margin-bottom:11px}.field span{font-size:12px;font-weight:800;color:#64748b}.field input{width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:8px;outline:none}.field input:focus{border-color:#06c755;box-shadow:0 0 0 3px #06c7551a}.button{width:100%;border:0;border-radius:8px;padding:11px 14px;background:#06c755;color:#fff;font-weight:900;cursor:pointer}.button.secondary{background:#fff;color:#475569;border:1px solid #cbd5e1;margin-top:8px}.notice{margin:12px 0;padding:10px;border-radius:8px;background:#eff6ff;color:#1d4ed8;font-size:12px;line-height:1.6}.notice.error{background:#fef2f2;color:#b91c1c}.hidden{display:none!important}.profile{padding:16px 0}.plan{display:inline-flex;padding:5px 9px;border-radius:999px;background:#f0fdf4;color:#15803d;font-size:11px;font-weight:900}.profile h2{font-size:18px;margin:10px 0 4px}.profile p{margin:0;color:#64748b;font-size:12px}.help{font-size:12px;line-height:1.6;color:#64748b;margin-top:14px}
+  </style>
+</head>
+<body>
+  <header><span class="mark">LP</span><div><h1 class="title">LINEPILOT</h1><p class="version">免費版 v<span id="version">2.0.0</span></p></div></header>
+  <section id="auth">
+    <div class="tabs"><button id="register-tab" class="tab active">免費註冊</button><button id="login-tab" class="tab">登入</button></div>
+    <div id="notice" class="notice hidden"></div>
+    <form id="auth-form">
+      <div id="register-fields">
+        <label class="field"><span>姓名</span><input id="displayName" autocomplete="name"></label>
+        <label class="field"><span>公司／品牌</span><input id="companyName" autocomplete="organization"></label>
+      </div>
+      <label class="field"><span>Email</span><input id="email" type="email" autocomplete="email" required></label>
+      <label class="field"><span>密碼</span><input id="password" type="password" minlength="8" autocomplete="current-password" required></label>
+      <button id="submit" class="button">註冊並啟用免費版</button>
+    </form>
+  </section>
+  <section id="profile" class="profile hidden">
+    <span class="plan">FREE 免費方案</span><h2 id="profile-name">使用者</h2><p id="profile-email"></p>
+    <p class="help">請開啟 LINE Official Account Manager。LINEPILOT 會讀取目前畫面上的最近對話，依照您的知識庫提供回覆建議。</p>
+    <button id="dashboard" class="button">管理我的知識庫</button><button id="logout" class="button secondary">登出</button>
+  </section>
+  <script src="popup.js"></script>
+</body>
+</html>

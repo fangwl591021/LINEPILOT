@@ -1,0 +1,80 @@
+#line-copilot-root .line-copilot-role-operator {
+  background: #eaf1ff;
+  color: #2457a6;
+}
+
+#line-copilot-root .line-copilot-role-system {
+  background: #fff4df;
+  color: #8a5700;
+}
+
+#line-copilot-root .line-copilot-confidence {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  margin-left: 5px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+#line-copilot-root .line-copilot-confidence-high {
+  background: #e8f7ee;
+  color: #176b3a;
+}
+
+#line-copilot-root .line-copilot-confidence-medium {
+  background: #fff4df;
+  color: #8a5700;
+}
+
+#line-copilot-root .line-copilot-confidence-low {
+  background: #edf0f2;
+  color: #5f6b76;
+}
+
+#line-copilot-root .line-copilot-debug-heading {
+  margin: 14px 0 7px;
+  color: #25313d;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+#line-copilot-root .line-copilot-debug-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 180px;
+  margin: 0 0 12px;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+#line-copilot-root .line-copilot-debug-list-item,
+#line-copilot-root .line-copilot-debug-empty {
+  padding: 7px 8px;
+  border: 1px solid #e0e5ea;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #52606d;
+  font-size: 10px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+#line-copilot-root .line-copilot-debug-empty {
+  border-style: dashed;
+  color: #87929e;
+  text-align: center;
+}
+
+#line-copilot-root .line-copilot-debug-export-result {
+  min-height: 18px;
+  margin: 6px 0 0;
+  color: #176b3a;
+  font-size: 10px;
+  text-align: center;
+}
