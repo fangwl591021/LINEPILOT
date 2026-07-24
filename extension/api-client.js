@@ -3,11 +3,11 @@
 
   const MOCK_SUGGESTION =
     "您好，感謝您的詢問。以下是根據目前資訊整理的建議回覆，請客服確認內容後再傳送給客戶。";
-  const MLM_MESSAGE_TYPE = "LINE_COPILOT_FETCH_MLM_KNOWLEDGE";
-  const MLM_STOP_WORDS = new Set([
+  const KNOWLEDGE_MESSAGE_TYPE = "LINEPILOT_FETCH_KNOWLEDGE";
+  const KNOWLEDGE_STOP_WORDS = new Set([
     "請幫我", "幫我", "請問", "回覆", "客戶", "整理", "問題", "建議", "內容", "一下", "目前", "可以"
   ]);
-  const MLM_INTENT_TERMS = [
+  const KNOWLEDGE_INTENT_TERMS = [
     "功能", "功效", "作用", "防藍光", "抗紫外線", "材質", "成分", "適用", "族群", "價格", "費用",
     "購買", "保固", "使用", "多久", "怎麼", "差別", "不同", "制度", "獎金", "退貨", "退款"
   ];
@@ -100,7 +100,7 @@
       for (let size = Math.min(6, normalized.length); size >= 2; size -= 1) {
         for (let index = 0; index <= normalized.length - size; index += 1) {
           const term = normalized.slice(index, index + size);
-          if (!MLM_STOP_WORDS.has(term)) terms.add(term);
+          if (!KNOWLEDGE_STOP_WORDS.has(term)) terms.add(term);
         }
       }
     }
@@ -126,7 +126,7 @@
         const categoryText = normalizeKnowledgeText(category);
         const allText = normalizeKnowledgeText([category, question, answer].join(" "));
         let score = 0;
-        for (const intent of MLM_INTENT_TERMS) {
+        for (const intent of KNOWLEDGE_INTENT_TERMS) {
           if (!normalizedQuery.includes(intent)) continue;
           if (questionText.includes(intent)) score += 55;
           else if (categoryText.includes(intent)) score += 35;
@@ -155,36 +155,35 @@
     });
   }
 
-  async function requestMlmKnowledgeSuggestion(payload, config) {
+  async function requestKnowledgeSuggestion(payload) {
     let response;
     try {
       response = await sendRuntimeMessage({
-        type: MLM_MESSAGE_TYPE,
-        url: String(config.MLM_KNOWLEDGE_URL || "")
+        type: KNOWLEDGE_MESSAGE_TYPE
       });
     } catch (_error) {
       throw new LineCopilotApiError(
-        "MLM_KNOWLEDGE_UNAVAILABLE",
-        "無法載入 MLM 知識庫，請稍後再試"
+        "KNOWLEDGE_UNAVAILABLE",
+        "請先點擊 LINEPILOT 圖示完成免費註冊，並建立知識庫"
       );
     }
     if (!response?.ok || !Array.isArray(response.items)) {
       throw new LineCopilotApiError(
-        "MLM_KNOWLEDGE_UNAVAILABLE",
-        response?.error || "無法載入 MLM 知識庫，請稍後再試"
+        "KNOWLEDGE_UNAVAILABLE",
+        response?.error || "無法載入您的知識庫，請稍後再試"
       );
     }
 
     const matches = findMlmKnowledgeMatches(payload, response.items);
     const suggestion = matches.length
       ? "您好，關於「" + matches[0].question + "」，" + matches[0].answer
-      : "目前在 MLM 知識庫中尚未找到足夠接近的資料，建議由客服確認後再回覆客戶。";
+      : "目前在您的知識庫中尚未找到足夠接近的資料，請先補充知識內容，或由客服人工確認後回覆。";
     return {
       success: true,
       suggestion,
-      requestId: "mlm-local-" + Date.now(),
-      model: "mlm-knowledge-local",
-      source: "MLM/data/knowledge-base.json",
+      requestId: "linepilot-knowledge-" + Date.now(),
+      model: "linepilot-knowledge-local",
+      source: "LINEPILOT 個人知識庫",
       createdAt: new Date().toISOString(),
       usage: { inputTokens: 0, outputTokens: 0 },
       knowledgeMatches: matches.map(({ category, question, score }) => ({ category, question, score }))
@@ -208,13 +207,12 @@
     }, timeoutMs);
 
     try {
-      const canUseMlmKnowledge = Boolean(
-        config.USE_MLM_KNOWLEDGE &&
-          config.MLM_KNOWLEDGE_URL &&
+      const canUseCloudKnowledge = Boolean(
+        config.USE_CLOUD_KNOWLEDGE &&
           globalThis.chrome?.runtime?.sendMessage
       );
-      if (canUseMlmKnowledge) {
-        return await requestMlmKnowledgeSuggestion(payload, config);
+      if (canUseCloudKnowledge) {
+        return await requestKnowledgeSuggestion(payload);
       }
 
       if (config.USE_MOCK_API) {
