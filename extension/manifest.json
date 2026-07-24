@@ -1,15 +1,18 @@
 {
   "manifest_version": 3,
-  "name": "LINE COPILOT",
-  "version": "1.5.0",
-  "description": "LINE OA 客服操作面板：客戶摘要、快速操作與人工確認的建議回覆。",
+  "name": "LINEPILOT 免費版",
+  "version": "2.0.0",
+  "description": "免串接 LINE Messaging API：讀取目前聊天室並依個人知識庫提供回覆建議。",
   "background": {
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "LINE COPILOT",
+    "default_title": "LINEPILOT 免費版",
     "default_popup": "popup.html"
   },
+  "permissions": [
+    "storage"
+  ],
   "content_scripts": [
     {
       "matches": [
@@ -19,7 +22,6 @@
       "js": [
         "config.js",
         "api-client.js",
-        "customer-integration.js",
         "ai-suggestion.js",
         "copilot-panel.js",
         "content.js"
@@ -32,7 +34,6 @@
     }
   ],
   "host_permissions": [
-    "https://raw.githubusercontent.com/fangwl591021/MLM/*",
-    "https://mlm.fangwl591021.workers.dev/*"
+    "https://line-oa.fangwl591021.workers.dev/*"
   ]
 }
