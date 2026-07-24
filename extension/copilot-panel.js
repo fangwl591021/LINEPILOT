@@ -107,7 +107,7 @@
           ${createCustomerInfoMarkup()}
           ${createDebugMarkup()}
         </main>
-        <footer class="line-copilot-footer"><button id="line-copilot-privacy-toggle" class="line-copilot-footer-link" type="button" aria-expanded="false">隱私說明</button><span class="line-copilot-footer-separator">·</span><button id="line-copilot-footer-debug" class="line-copilot-footer-link" type="button">開發與偵錯</button><span class="line-copilot-footer-separator">·</span><span class="line-copilot-version">v1.5.0</span><p id="line-copilot-privacy-note" class="line-copilot-privacy" hidden>MLM 知識庫在瀏覽器本機比對；不自動傳送任何 LINE 訊息。</p></footer>
+        <footer class="line-copilot-footer"><button id="line-copilot-privacy-toggle" class="line-copilot-footer-link" type="button" aria-expanded="false">隱私說明</button><span class="line-copilot-footer-separator">·</span><button id="line-copilot-footer-debug" class="line-copilot-footer-link" type="button">開發與偵錯</button><span class="line-copilot-footer-separator">·</span><span class="line-copilot-version">v2.0.0 FREE</span><p id="line-copilot-privacy-note" class="line-copilot-privacy" hidden>只讀取目前畫面可見對話並在本機比對您的知識庫；不串接 LINE Messaging API，也不自動傳送訊息。</p></footer>
       </section>`;
     return root;
   }
