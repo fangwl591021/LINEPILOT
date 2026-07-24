@@ -1,94 +1,130 @@
 "use strict";
 
-const LINE_COPILOT_MLM_KNOWLEDGE_URL =
-  "https://raw.githubusercontent.com/fangwl591021/MLM/main/data/knowledge-base.json";
-let lineCopilotKnowledgeCache = null;
-const LINE_COPILOT_MLM_API_BASE = "https://mlm.fangwl591021.workers.dev";
+const PLATFORM_API = "https://line-oa.fangwl591021.workers.dev";
+const STORAGE_KEYS = Object.freeze({
+  token: "linepilot_token",
+  user: "linepilot_user",
+  expiresAt: "linepilot_expires_at"
+});
+let knowledgeCache = null;
 
 chrome.runtime.onInstalled.addListener(() => {
-  console.log("LINE COPILOT installed");
+  console.log("LINEPILOT 免費版已安裝");
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message?.type !== "LINE_COPILOT_FETCH_MLM_KNOWLEDGE") return false;
+  if (!String(message?.type || "").startsWith("LINEPILOT_")) return false;
+  handleMessage(message).then(
+    (data) => sendResponse({ ok: true, ...data }),
+    (error) => sendResponse({ ok: false, error: error?.message || "LINEPILOT 暫時無法處理" })
+  );
+  return true;
+});
 
-  const requestedUrl = String(message.url || "");
-  if (requestedUrl !== LINE_COPILOT_MLM_KNOWLEDGE_URL) {
-    sendResponse({ ok: false, error: "不允許的知識庫網址" });
-    return false;
-  }
-
-  (async () => {
+async function handleMessage(message) {
+  if (message.type === "LINEPILOT_AUTH_STATUS") {
+    const session = await getSession();
+    if (!session.token) return { authenticated: false };
     try {
-      if (!lineCopilotKnowledgeCache) {
-        const response = await fetch(LINE_COPILOT_MLM_KNOWLEDGE_URL, {
-          cache: "no-store",
-          credentials: "omit",
-          referrerPolicy: "no-referrer"
-        });
-        if (!response.ok) throw new Error("MLM knowledge HTTP " + response.status);
-        const data = await response.json();
-        if (!Array.isArray(data)) throw new Error("MLM knowledge format is invalid");
-        lineCopilotKnowledgeCache = data;
-      }
-      sendResponse({ ok: true, items: lineCopilotKnowledgeCache });
+      const data = await api("/api/auth/me", { token: session.token });
+      await saveSession({ ...session, user: data.user });
+      return { authenticated: true, user: data.user, limits: data.limits };
     } catch (_error) {
-      sendResponse({ ok: false, error: "無法載入 MLM 知識庫" });
+      await clearSession();
+      return { authenticated: false };
     }
-  })();
-  return true;
-});
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (!["LINE_COPILOT_MLM_LOGIN", "LINE_COPILOT_MLM_REQUEST"].includes(message?.type)) return false;
-
-  (async () => {
-    try {
-      if (message.type === "LINE_COPILOT_MLM_LOGIN") {
-        const response = await fetch(`${LINE_COPILOT_MLM_API_BASE}/api/auth/extension-login`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username: String(message.username || ""), password: String(message.password || "") }),
-          cache: "no-store",
-          credentials: "omit",
-          redirect: "error",
-          referrerPolicy: "no-referrer"
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok || data.status !== "success" || !String(data.token || "").startsWith("lcx1.")) {
-          throw new Error(data.message || `MLM 登入失敗 (${response.status})`);
-        }
-        sendResponse({ ok: true, data });
-        return;
+  }
+  if (message.type === "LINEPILOT_REGISTER") {
+    const data = await api("/api/auth/register", {
+      method: "POST",
+      body: {
+        email: message.email,
+        password: message.password,
+        displayName: message.displayName,
+        companyName: message.companyName
       }
-
-      const token = String(message.token || "");
-      if (!token.startsWith("lcx1.")) throw new Error("MLM 短效登入已失效，請重新登入");
-      const method = String(message.method || "GET").toUpperCase();
-      const requestedPath = String(message.path || "");
-      const target = new URL(requestedPath, LINE_COPILOT_MLM_API_BASE);
-      if (target.origin !== LINE_COPILOT_MLM_API_BASE) throw new Error("不允許的 MLM API 網址");
-      const allowed =
-        (method === "GET" && ["/api/copilot/customer", "/admin/points/ledger"].includes(target.pathname)) ||
-        (method === "POST" && ["/admin/points/grant", "/admin/points/deduct"].includes(target.pathname));
-      if (!allowed) throw new Error("不允許的 MLM API 操作");
-      const options = {
-        method,
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        cache: "no-store",
-        credentials: "omit",
-        redirect: "error",
-        referrerPolicy: "no-referrer"
+    });
+    await saveSession(data);
+    knowledgeCache = null;
+    return data;
+  }
+  if (message.type === "LINEPILOT_LOGIN") {
+    const data = await api("/api/auth/login", {
+      method: "POST",
+      body: { email: message.email, password: message.password }
+    });
+    await saveSession(data);
+    knowledgeCache = null;
+    return data;
+  }
+  if (message.type === "LINEPILOT_LOGOUT") {
+    const session = await getSession();
+    if (session.token) await api("/api/auth/logout", { method: "POST", token: session.token }).catch(() => {});
+    await clearSession();
+    knowledgeCache = null;
+    return { authenticated: false };
+  }
+  if (message.type === "LINEPILOT_FETCH_KNOWLEDGE") {
+    const session = await requireSession();
+    if (!knowledgeCache || message.refresh === true) {
+      const data = await api("/api/knowledge", { token: session.token });
+      knowledgeCache = {
+        items: Array.isArray(data.items) ? data.items : [],
+        usage: data.usage || { current: 0, limit: 100 },
+        fetchedAt: Date.now()
       };
-      if (method === "POST") options.body = JSON.stringify(message.body || {});
-      const response = await fetch(target.href, options);
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || data.status === "error" || data.success === false) {
-        throw new Error(`${data.message || "MLM API 呼叫失敗"} (${response.status})`);
-      }
-      sendResponse({ ok: true, data });
-    } catch (error) {
-      sendResponse({ ok: false, error: error?.message || "MLM API 呼叫失敗" });
     }
-  })();
-  return true;
-});
+    return knowledgeCache;
+  }
+  throw new Error("不允許的操作");
+}
+
+async function api(path, options = {}) {
+  const response = await fetch(PLATFORM_API + path, {
+    method: options.method || "GET",
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.token ? { Authorization: `Bearer ${options.token}` } : {})
+    },
+    body: options.body ? JSON.stringify(options.body) : undefined,
+    cache: "no-store",
+    credentials: "omit",
+    redirect: "error",
+    referrerPolicy: "no-referrer"
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data.ok === false) throw new Error(data.message || `平台連線失敗 (${response.status})`);
+  return data;
+}
+
+async function getSession() {
+  const values = await chrome.storage.local.get(Object.values(STORAGE_KEYS));
+  const expiresAt = Number(values[STORAGE_KEYS.expiresAt] || 0);
+  if (!values[STORAGE_KEYS.token] || expiresAt <= Date.now()) {
+    await clearSession();
+    return {};
+  }
+  return {
+    token: values[STORAGE_KEYS.token],
+    user: values[STORAGE_KEYS.user] || null,
+    expiresAt
+  };
+}
+
+async function requireSession() {
+  const session = await getSession();
+  if (!session.token) throw new Error("請先點擊 LINEPILOT 圖示完成免費註冊或登入");
+  return session;
+}
+
+async function saveSession(data) {
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.token]: data.token,
+    [STORAGE_KEYS.user]: data.user || null,
+    [STORAGE_KEYS.expiresAt]: Date.parse(data.expiresAt) || Number(data.expiresAt) || 0
+  });
+}
+
+async function clearSession() {
+  await chrome.storage.local.remove(Object.values(STORAGE_KEYS));
+}
